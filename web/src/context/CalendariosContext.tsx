@@ -88,8 +88,15 @@ export function CalendariosProvider({ children }: { children: ReactNode }) {
     // Leer estado fresco (no del closure) para soportar varias llamadas seguidas
     const actuales = load<CalendarioCliente[]>(KEY, [])
     const inicio = fechaInicio ?? siguienteLunes()
-    const existentes = actuales.filter(c => c.clienteId === clienteId)
-    const color = colorKey ?? ['yellow','blue','purple','green','orange'][existentes.length % 5]
+    const palette = ['yellow','blue','purple','green','orange']
+
+    // Color por suscripción: si ya existe un calendario de la misma suscripción, reutiliza su color
+    const delCliente = actuales.filter(c => c.clienteId === clienteId)
+    const mismaSusc = delCliente.find(c => c.suscripcionClienteId === suscripcionClienteId)
+    const suscsDistintas = Array.from(new Set(delCliente.map(c => c.suscripcionClienteId)))
+    const color = colorKey
+      ?? mismaSusc?.colorKey
+      ?? palette[suscsDistintas.length % palette.length]
     const nuevo: CalendarioCliente = {
       id: genId(),
       clienteId,
