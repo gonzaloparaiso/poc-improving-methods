@@ -3,6 +3,7 @@ import { useClientes } from '../../context/ClientesContext'
 import { type Cliente } from '../../types'
 import ClienteModal from '../../components/clientes/ClienteModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import ClienteDetalle from './ClienteDetalle'
 
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
@@ -21,6 +22,7 @@ function Avatar({ nombre, apellido }: { nombre: string; apellido: string }) {
 export default function ClientesList() {
   const { clientes, borrarCliente, toggleActivoCliente, suscripciones, catalogo } = useClientes()
 
+  const [clienteAbierto, setClienteAbierto] = useState<Cliente | null>(null)
   const [modal, setModal]         = useState(false)
   const [editando, setEditando]   = useState<Cliente | null>(null)
   const [borrando, setBorrando]   = useState<Cliente | null>(null)
@@ -45,6 +47,12 @@ export default function ClientesList() {
 
   const openCreate = () => { setEditando(null); setModal(true) }
   const openEdit   = (c: Cliente) => { setEditando(c); setModal(true) }
+
+  // Vista de ficha de cliente
+  if (clienteAbierto) {
+    const actualizado = clientes.find(c => c.id === clienteAbierto.id) ?? clienteAbierto
+    return <ClienteDetalle cliente={actualizado} onVolver={() => setClienteAbierto(null)} />
+  }
 
   return (
     <div className="space-y-5">
@@ -128,12 +136,13 @@ export default function ClientesList() {
                 {filtered.map(c => {
                   const suscsActivas = getSuscripcionesActivas(c.id)
                   return (
-                    <tr key={c.id} className={`hover:bg-tn-dark/40 transition-colors ${!c.activo ? 'opacity-60' : ''}`}>
+                    <tr key={c.id} className={`hover:bg-tn-dark/40 transition-colors cursor-pointer ${!c.activo ? 'opacity-60' : ''}`}
+                      onClick={() => setClienteAbierto(c)}>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <Avatar nombre={c.nombre} apellido={c.apellido} />
                           <div>
-                            <p className="text-white font-semibold text-sm">{c.nombre} {c.apellido}</p>
+                            <p className="text-white font-semibold text-sm group-hover:text-tn-yellow">{c.nombre} {c.apellido}</p>
                             <p className="text-tn-muted text-xs font-mono">@{c.username}</p>
                           </div>
                         </div>
@@ -168,7 +177,7 @@ export default function ClientesList() {
                       <td className="px-5 py-4 hidden lg:table-cell">
                         <span className="text-tn-muted text-sm">{fmtDate(c.creadoEn)}</span>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center gap-1 justify-end">
                           <button onClick={() => openEdit(c)}
                             className="p-2 text-tn-muted hover:text-white hover:bg-tn-border rounded-lg transition-all" title="Editar">
