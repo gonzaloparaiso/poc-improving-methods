@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useState } from 'react'
 import { UsersProvider } from './context/UsersContext'
 import { PlanificacionProvider } from './context/PlanificacionContext'
+import { ClientesProvider } from './context/ClientesContext'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import Administracion from './pages/Administracion'
@@ -32,6 +33,7 @@ function App() {
 
   return (
     <UsersProvider>
+      <ClientesProvider>
       <PlanificacionProvider>
         <BrowserRouter>
           <Routes>
@@ -59,6 +61,7 @@ function App() {
           </Routes>
         </BrowserRouter>
       </PlanificacionProvider>
+      </ClientesProvider>
     </UsersProvider>
   )
 }

@@ -1,14 +1,13 @@
-// ─── Roles ────────────────────────────────────────────────────────────────────
-export type Rol = 'administrador' | 'head_coach' | 'coach' | 'cliente'
+// ─── Roles (sin cliente — los clientes tienen su propio módulo) ───────────────
+export type Rol = 'administrador' | 'head_coach' | 'coach'
 
 export const ROLES: { value: Rol; label: string; color: string }[] = [
   { value: 'administrador', label: 'Administrador', color: 'yellow' },
   { value: 'head_coach',    label: 'Head Coach',    color: 'purple' },
   { value: 'coach',         label: 'Coach',         color: 'blue'   },
-  { value: 'cliente',       label: 'Cliente',       color: 'green'  },
 ]
 
-// ─── Usuario ──────────────────────────────────────────────────────────────────
+// ─── Usuario (staff del sistema) ──────────────────────────────────────────────
 export interface Usuario {
   id: string
   nombre: string
@@ -18,11 +17,11 @@ export interface Usuario {
   password: string      // plain text para el POC
   rol: Rol
   activo: boolean
-  creadoEn: string      // ISO date string
-  bajaEn: string | null // ISO date string | null
+  creadoEn: string
+  bajaEn: string | null
 }
 
-// ─── Permisos (preparado para expansión) ─────────────────────────────────────
+// ─── Permisos ─────────────────────────────────────────────────────────────────
 export type Seccion =
   | 'administracion'
   | 'clientes'
@@ -50,27 +49,55 @@ export const PERMISOS: Record<Rol, MatrizPermisos> = {
     planificaciones: ['ver', 'crear', 'editar'],
     entrenamientos:  ['ver', 'crear', 'editar'],
   },
-  cliente: {
-    planificaciones: ['ver'],
-    entrenamientos:  ['ver'],
-  },
 }
 
 export function puedeHacer(rol: Rol, seccion: Seccion, accion: Accion): boolean {
   return PERMISOS[rol]?.[seccion]?.includes(accion) ?? false
 }
 
-// ─── Planificación ────────────────────────────────────────────────────────────
+// ─── Clientes ─────────────────────────────────────────────────────────────────
+export interface Cliente {
+  id: string
+  nombre: string
+  apellido: string
+  email: string         // usado para login del portal cliente
+  username: string      // alias / nombre de usuario
+  password: string      // usado para login del portal cliente
+  activo: boolean
+  creadoEn: string
+  bajaEn: string | null
+  suscripcionesIds: string[]  // refs a SuscripcionCliente[]
+}
 
+// ─── Suscripciones ────────────────────────────────────────────────────────────
+export type TipoSuscripcion = 'unico' | 'recurrente'
+
+export interface CatalogoSuscripcion {
+  id: string
+  nombre: string
+  programaId: string | null     // ref a Programa (puede no tener programa aún)
+  tipo: TipoSuscripcion
+  creadoEn: string
+}
+
+export interface SuscripcionCliente {
+  id: string
+  catalogoId: string            // ref a CatalogoSuscripcion
+  clienteId: string
+  fechaInicio: string
+  activa: boolean
+}
+
+// ─── Planificación ────────────────────────────────────────────────────────────
 export const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'] as const
 export type DiaSemana = typeof DIAS_SEMANA[number]
 
 export interface EjercicioEnBloque {
-  id: string           // id local dentro del bloque
-  ejercicioId: string  // ref a EJERCICIOS[]
-  series: string       // "3", "AMRAP"
-  reps: string         // "10", "10-12", "Max"
-  descanso: string     // "60s", "2 min"
+  id: string
+  ejercicioId: string
+  series: string
+  reps: string
+  descanso: string
   notas: string
 }
 
@@ -79,21 +106,20 @@ export interface Bloque {
   nombre: string
   instrucciones: string
   notas: string
-  cronometro: string           // "20:00", "" si no tiene
+  cronometro: string
   ejercicios: EjercicioEnBloque[]
   esPlantilla: boolean
   creadoEn: string
 }
 
 export interface DiaPrograma {
-  // índice 0-6 implícito por posición en el array
   bloques: Bloque[]
 }
 
 export interface Semana {
   id: string
   numero: number
-  dias: DiaPrograma[]  // siempre 7 elementos
+  dias: DiaPrograma[]
 }
 
 export interface Programa {
