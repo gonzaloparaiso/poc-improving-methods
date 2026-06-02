@@ -3,11 +3,13 @@ import { usePlanificacion } from '../../context/PlanificacionContext'
 import { type Programa } from '../../types'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import ProgramaDetalle from './ProgramaDetalle'
+import { usePermisos } from '../../hooks/usePermisos'
 
-function ProgramaCard({ programa, onAbrir, onBorrar }: {
+function ProgramaCard({ programa, onAbrir, onBorrar, puedeBorrar }: {
   programa: Programa
   onAbrir: () => void
   onBorrar: () => void
+  puedeBorrar: boolean
 }) {
   const totalBloques = programa.semanas.reduce((acc, s) =>
     acc + s.dias.reduce((a, d) => a + d.bloques.length, 0), 0)
@@ -43,14 +45,16 @@ function ProgramaCard({ programa, onAbrir, onBorrar }: {
             </span>
           </div>
         </div>
-        <button
-          onClick={e => { e.stopPropagation(); onBorrar() }}
-          className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </button>
+        {puedeBorrar && (
+          <button
+            onClick={e => { e.stopPropagation(); onBorrar() }}
+            className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   )
@@ -58,6 +62,7 @@ function ProgramaCard({ programa, onAbrir, onBorrar }: {
 
 export default function ProgramasList() {
   const { programas, crearPrograma, borrarPrograma } = usePlanificacion()
+  const { puede } = usePermisos()
   const [programaAbierto, setProgramaAbierto] = useState<Programa | null>(null)
   const [modalNuevo, setModalNuevo]           = useState(false)
   const [nombre, setNombre]                   = useState('')
@@ -90,15 +95,17 @@ export default function ProgramasList() {
               : `${programas.length} programa${programas.length !== 1 ? 's' : ''}`}
           </p>
         </div>
-        <button
-          className="btn-primary flex items-center gap-2 self-start sm:self-auto"
-          onClick={() => setModalNuevo(true)}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-          </svg>
-          Nuevo programa
-        </button>
+        {puede('planificaciones', 'crear') && (
+          <button
+            className="btn-primary flex items-center gap-2 self-start sm:self-auto"
+            onClick={() => setModalNuevo(true)}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+            </svg>
+            Nuevo programa
+          </button>
+        )}
       </div>
 
       {programas.length === 0 ? (
@@ -127,6 +134,7 @@ export default function ProgramasList() {
               programa={p}
               onAbrir={() => setProgramaAbierto(p)}
               onBorrar={() => setBorrando(p)}
+              puedeBorrar={puede('planificaciones', 'borrar')}
             />
           ))}
         </div>

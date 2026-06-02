@@ -4,6 +4,7 @@ import { ROLES, type Usuario } from '../types'
 import RolBadge from '../components/RolBadge'
 import UserModal from '../components/UserModal'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { usePermisos } from '../hooks/usePermisos'
 
 type FiltroRol = 'todos' | string
 type FiltroEstado = 'todos' | 'activo' | 'inactivo'
@@ -24,6 +25,7 @@ function Avatar({ nombre, apellido }: { nombre: string; apellido: string }) {
 
 export default function Administracion() {
   const { users, borrar, toggleActivo } = useUsers()
+  const { puede } = usePermisos()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editUser, setEditUser] = useState<Usuario | null>(null)
@@ -112,12 +114,14 @@ export default function Administracion() {
           <option value="inactivo">Inactivos</option>
         </select>
 
-        <button className="btn-primary flex items-center gap-2 whitespace-nowrap" onClick={openCreate}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-          </svg>
-          Nuevo usuario
-        </button>
+        {puede('administracion', 'crear') && (
+          <button className="btn-primary flex items-center gap-2 whitespace-nowrap" onClick={openCreate}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+            </svg>
+            Nuevo usuario
+          </button>
+        )}
       </div>
 
       {/* ── Tabla ────────────────────────────────────────────────────────── */}
@@ -212,47 +216,53 @@ export default function Administracion() {
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1 justify-end">
                         {/* Editar */}
-                        <button
-                          onClick={() => openEdit(u)}
-                          title="Editar"
-                          className="p-2 text-tn-muted hover:text-white hover:bg-tn-border rounded-lg transition-all"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
+                        {puede('administracion', 'editar') && (
+                          <button
+                            onClick={() => openEdit(u)}
+                            title="Editar"
+                            className="p-2 text-tn-muted hover:text-white hover:bg-tn-border rounded-lg transition-all"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
 
                         {/* Toggle activo */}
-                        <button
-                          onClick={() => setToggleUser(u)}
-                          title={u.activo ? 'Desactivar' : 'Activar'}
-                          className={`p-2 rounded-lg transition-all ${
-                            u.activo
-                              ? 'text-tn-muted hover:text-red-400 hover:bg-red-400/5'
-                              : 'text-tn-muted hover:text-green-400 hover:bg-green-400/5'
-                          }`}
-                        >
-                          {u.activo ? (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                            </svg>
-                          ) : (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          )}
-                        </button>
+                        {puede('administracion', 'editar') && (
+                          <button
+                            onClick={() => setToggleUser(u)}
+                            title={u.activo ? 'Desactivar' : 'Activar'}
+                            className={`p-2 rounded-lg transition-all ${
+                              u.activo
+                                ? 'text-tn-muted hover:text-red-400 hover:bg-red-400/5'
+                                : 'text-tn-muted hover:text-green-400 hover:bg-green-400/5'
+                            }`}
+                          >
+                            {u.activo ? (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            )}
+                          </button>
+                        )}
 
                         {/* Borrar */}
-                        <button
-                          onClick={() => setDeleteUser(u)}
-                          title="Eliminar"
-                          className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
+                        {puede('administracion', 'borrar') && (
+                          <button
+                            onClick={() => setDeleteUser(u)}
+                            title="Eliminar"
+                            className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

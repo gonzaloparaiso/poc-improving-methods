@@ -1,9 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { UsersProvider } from './context/UsersContext'
 import { PlanificacionProvider } from './context/PlanificacionContext'
 import { ClientesProvider } from './context/ClientesContext'
 import { CalendariosProvider } from './context/CalendariosContext'
+import { usePermisos } from './hooks/usePermisos'
+import { type Seccion } from './types'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import Administracion from './pages/Administracion'
@@ -15,6 +17,19 @@ export interface User {
   username: string
   role: string
   nombre: string
+}
+
+/** Guarda una ruta: si el rol no tiene acceso, redirige a /clientes */
+function Guard({ seccion, children }: { seccion: Seccion; children: ReactNode }) {
+  const { puede } = usePermisos()
+  if (!puede(seccion, 'ver')) return <Navigate to="/clientes" replace />
+  return <>{children}</>
+}
+
+/** Ruta raíz: admin → administracion, resto → clientes */
+function HomeRedirect() {
+  const { esAdmin } = usePermisos()
+  return <Navigate to={esAdmin ? '/administracion' : '/clientes'} replace />
 }
 
 function App() {
@@ -50,11 +65,13 @@ function App() {
                 user ? (
                   <Layout user={user} onLogout={logout}>
                     <Routes>
-                      <Route path="/" element={<Navigate to="/administracion" replace />} />
-                      <Route path="/administracion" element={<Administracion />} />
-                      <Route path="/clientes" element={<Clientes />} />
-                      <Route path="/suscripciones" element={<Suscripciones />} />
-                      <Route path="/planificacion" element={<Planificacion />} />
+                      <Route path="/" element={<HomeRedirect />} />
+                      <Route path="/administracion" element={
+                        <Guard seccion="administracion"><Administracion /></Guard>
+                      } />
+                      <Route path="/clientes"       element={<Clientes />} />
+                      <Route path="/suscripciones"  element={<Suscripciones />} />
+                      <Route path="/planificacion"  element={<Planificacion />} />
                     </Routes>
                   </Layout>
                 ) : (

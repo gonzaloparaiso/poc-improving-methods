@@ -25,6 +25,7 @@ export interface Usuario {
 export type Seccion =
   | 'administracion'
   | 'clientes'
+  | 'suscripciones'
   | 'planificaciones'
   | 'entrenamientos'
 
@@ -36,16 +37,19 @@ export const PERMISOS: Record<Rol, MatrizPermisos> = {
   administrador: {
     administracion:  ['ver', 'crear', 'editar', 'borrar'],
     clientes:        ['ver', 'crear', 'editar', 'borrar'],
+    suscripciones:   ['ver', 'crear', 'editar', 'borrar'],
     planificaciones: ['ver', 'crear', 'editar', 'borrar'],
     entrenamientos:  ['ver', 'crear', 'editar', 'borrar'],
   },
   head_coach: {
     clientes:        ['ver'],
+    suscripciones:   ['ver'],
     planificaciones: ['ver', 'crear', 'editar', 'borrar'],
     entrenamientos:  ['ver', 'crear', 'editar', 'borrar'],
   },
   coach: {
     clientes:        ['ver'],
+    suscripciones:   ['ver'],
     planificaciones: ['ver', 'crear', 'editar'],
     entrenamientos:  ['ver', 'crear', 'editar'],
   },

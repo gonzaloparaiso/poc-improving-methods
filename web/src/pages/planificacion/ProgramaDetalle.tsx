@@ -4,6 +4,7 @@ import { usePlanificacion } from '../../context/PlanificacionContext'
 import { EJERCICIOS } from '../../data/ejercicios'
 import BloqueModal from '../../components/planificacion/BloqueModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import { usePermisos } from '../../hooks/usePermisos'
 
 interface Props {
   programa: Programa
@@ -25,11 +26,17 @@ function GridSemana({
   onAñadir,
   onEditar,
   onBorrar,
+  puedeCrear,
+  puedeEditar,
+  puedeBorrar,
 }: {
   semana: Semana
   onAñadir: (semanaId: string, diaIdx: number) => void
   onEditar: (semanaId: string, diaIdx: number, bloque: Bloque) => void
   onBorrar: (semanaId: string, diaIdx: number, bloque: Bloque) => void
+  puedeCrear: boolean
+  puedeEditar: boolean
+  puedeBorrar: boolean
 }) {
   return (
     <div className="overflow-x-auto -mx-4 lg:mx-0 px-4 lg:px-0">
@@ -50,22 +57,26 @@ function GridSemana({
                     <div className="flex items-start justify-between gap-1 mb-1.5">
                       <p className="text-white font-semibold text-xs leading-tight line-clamp-2">{bloque.nombre}</p>
                       <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                        <button
-                          onClick={() => onEditar(semana.id, diaIdx, bloque)}
-                          className="p-1 text-tn-muted hover:text-white rounded transition-colors"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => onBorrar(semana.id, diaIdx, bloque)}
-                          className="p-1 text-tn-muted hover:text-red-400 rounded transition-colors"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
+                        {puedeEditar && (
+                          <button
+                            onClick={() => onEditar(semana.id, diaIdx, bloque)}
+                            className="p-1 text-tn-muted hover:text-white rounded transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                        {puedeBorrar && (
+                          <button
+                            onClick={() => onBorrar(semana.id, diaIdx, bloque)}
+                            className="p-1 text-tn-muted hover:text-red-400 rounded transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -95,15 +106,17 @@ function GridSemana({
                 ))}
 
                 {/* Botón añadir */}
-                <button
-                  onClick={() => onAñadir(semana.id, diaIdx)}
-                  className="w-full border border-dashed border-tn-border rounded-xl py-3 text-tn-muted/60 hover:text-tn-yellow hover:border-tn-yellow/40 text-xs transition-all flex flex-col items-center gap-1"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  <span className="hidden lg:block">Añadir</span>
-                </button>
+                {puedeCrear && (
+                  <button
+                    onClick={() => onAñadir(semana.id, diaIdx)}
+                    className="w-full border border-dashed border-tn-border rounded-xl py-3 text-tn-muted/60 hover:text-tn-yellow hover:border-tn-yellow/40 text-xs transition-all flex flex-col items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span className="hidden lg:block">Añadir</span>
+                  </button>
+                )}
               </div>
             </div>
           )
@@ -116,6 +129,7 @@ function GridSemana({
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function ProgramaDetalle({ programa, onVolver }: Props) {
   const { añadirBloqueAlDia, editarBloqueDelDia, borrarBloqueDelDia, añadirSemana, borrarSemana, plantillas } = usePlanificacion()
+  const { puede } = usePermisos()
 
   const [vista, setVista] = useState<number | 'todas'>(0)
   const [modal, setModal] = useState<ModalState>(null)
@@ -196,18 +210,20 @@ export default function ProgramaDetalle({ programa, onVolver }: Props) {
         ))}
 
         {/* Añadir semana */}
-        <button
-          onClick={() => añadirSemana(programa.id)}
-          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-tn-muted hover:text-tn-yellow hover:bg-tn-yellow/5 border border-dashed border-tn-border hover:border-tn-yellow/40 transition-all"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-          </svg>
-          Semana
-        </button>
+        {puede('planificaciones', 'crear') && (
+          <button
+            onClick={() => añadirSemana(programa.id)}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-tn-muted hover:text-tn-yellow hover:bg-tn-yellow/5 border border-dashed border-tn-border hover:border-tn-yellow/40 transition-all"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+            </svg>
+            Semana
+          </button>
+        )}
 
         {/* Borrar semana actual (solo en vista individual) */}
-        {typeof vista === 'number' && programa.semanas.length > 1 && semanaActual && (
+        {typeof vista === 'number' && programa.semanas.length > 1 && semanaActual && puede('planificaciones', 'borrar') && (
           <button
             onClick={() => setBorrarSemanaConf(semanaActual.id)}
             className="flex-shrink-0 px-3 py-2 rounded-lg text-xs text-tn-muted hover:text-red-400 hover:bg-red-400/5 border border-dashed border-tn-border hover:border-red-400/30 transition-all"
@@ -227,6 +243,9 @@ export default function ProgramaDetalle({ programa, onVolver }: Props) {
           onAñadir={abrirAñadir}
           onEditar={abrirEditar}
           onBorrar={(sid, di, b) => setBorrarBloque({ semanaId: sid, diaIdx: di, bloque: b })}
+          puedeCrear={puede('planificaciones', 'crear')}
+          puedeEditar={puede('planificaciones', 'editar')}
+          puedeBorrar={puede('planificaciones', 'borrar')}
         />
       )}
 
@@ -247,6 +266,9 @@ export default function ProgramaDetalle({ programa, onVolver }: Props) {
                 onAñadir={abrirAñadir}
                 onEditar={abrirEditar}
                 onBorrar={(sid, di, b) => setBorrarBloque({ semanaId: sid, diaIdx: di, bloque: b })}
+                puedeCrear={puede('planificaciones', 'crear')}
+                puedeEditar={puede('planificaciones', 'editar')}
+                puedeBorrar={puede('planificaciones', 'borrar')}
               />
             </div>
           ))}

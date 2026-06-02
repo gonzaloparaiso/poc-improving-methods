@@ -4,6 +4,7 @@ import { type Cliente } from '../../types'
 import ClienteModal from '../../components/clientes/ClienteModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import ClienteDetalle from './ClienteDetalle'
+import { usePermisos } from '../../hooks/usePermisos'
 
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
@@ -21,6 +22,7 @@ function Avatar({ nombre, apellido }: { nombre: string; apellido: string }) {
 
 export default function ClientesList() {
   const { clientes, borrarCliente, toggleActivoCliente, suscripciones, catalogo } = useClientes()
+  const { puede } = usePermisos()
 
   const [clienteAbierto, setClienteAbierto] = useState<Cliente | null>(null)
   const [modal, setModal]         = useState(false)
@@ -85,12 +87,14 @@ export default function ClientesList() {
           <option value="activo">Activos</option>
           <option value="inactivo">Inactivos</option>
         </select>
-        <button className="btn-primary flex items-center gap-2 whitespace-nowrap" onClick={openCreate}>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-          </svg>
-          Nuevo cliente
-        </button>
+        {puede('clientes', 'crear') && (
+          <button className="btn-primary flex items-center gap-2 whitespace-nowrap" onClick={openCreate}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+            </svg>
+            Nuevo cliente
+          </button>
+        )}
       </div>
 
       {/* Tabla */}
@@ -110,7 +114,7 @@ export default function ClientesList() {
                 ? 'Añade tu primer cliente para empezar'
                 : 'Prueba a cambiar los filtros'}
             </p>
-            {clientes.length === 0 && (
+            {clientes.length === 0 && puede('clientes', 'crear') && (
               <button className="btn-primary flex items-center gap-2 mt-4" onClick={openCreate}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -179,27 +183,33 @@ export default function ClientesList() {
                       </td>
                       <td className="px-5 py-4" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center gap-1 justify-end">
-                          <button onClick={() => openEdit(c)}
-                            className="p-2 text-tn-muted hover:text-white hover:bg-tn-border rounded-lg transition-all" title="Editar">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button onClick={() => setToggle(c)}
-                            className={`p-2 rounded-lg transition-all ${c.activo ? 'text-tn-muted hover:text-red-400 hover:bg-red-400/5' : 'text-tn-muted hover:text-green-400 hover:bg-green-400/5'}`}
-                            title={c.activo ? 'Desactivar' : 'Activar'}>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              {c.activo
-                                ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                                : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />}
-                            </svg>
-                          </button>
-                          <button onClick={() => setBorrando(c)}
-                            className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all" title="Eliminar">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+                          {puede('clientes', 'editar') && (
+                            <button onClick={() => openEdit(c)}
+                              className="p-2 text-tn-muted hover:text-white hover:bg-tn-border rounded-lg transition-all" title="Editar">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                          {puede('clientes', 'editar') && (
+                            <button onClick={() => setToggle(c)}
+                              className={`p-2 rounded-lg transition-all ${c.activo ? 'text-tn-muted hover:text-red-400 hover:bg-red-400/5' : 'text-tn-muted hover:text-green-400 hover:bg-green-400/5'}`}
+                              title={c.activo ? 'Desactivar' : 'Activar'}>
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                {c.activo
+                                  ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                  : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />}
+                              </svg>
+                            </button>
+                          )}
+                          {puede('clientes', 'borrar') && (
+                            <button onClick={() => setBorrando(c)}
+                              className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all" title="Eliminar">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

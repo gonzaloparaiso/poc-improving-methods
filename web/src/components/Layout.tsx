@@ -1,6 +1,9 @@
 import { type ReactNode, useState } from 'react'
+import type React from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { type User } from '../App'
+import { usePermisos } from '../hooks/usePermisos'
+import { type Seccion } from '../types'
 
 interface Props {
   children: ReactNode
@@ -8,10 +11,11 @@ interface Props {
   onLogout: () => void
 }
 
-const navItems = [
+const navItems: { path: string; label: string; seccion: Seccion; icon: React.ReactNode }[] = [
   {
     path: '/administracion',
     label: 'Administración',
+    seccion: 'administracion',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -23,6 +27,7 @@ const navItems = [
   {
     path: '/clientes',
     label: 'Clientes',
+    seccion: 'clientes',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -33,6 +38,7 @@ const navItems = [
   {
     path: '/suscripciones',
     label: 'Suscripciones',
+    seccion: 'suscripciones',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -43,6 +49,7 @@ const navItems = [
   {
     path: '/planificacion',
     label: 'Planificación',
+    seccion: 'planificaciones',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -55,8 +62,10 @@ const navItems = [
 export default function Layout({ children, user, onLogout }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
+  const { puede } = usePermisos()
 
-  const currentPage = navItems.find(item => location.pathname.startsWith(item.path))?.label || ''
+  const visibleNavItems = navItems.filter(item => puede(item.seccion, 'ver'))
+  const currentPage = visibleNavItems.find(item => location.pathname.startsWith(item.path))?.label || ''
 
   return (
     <div className="min-h-screen flex bg-tn-black">
@@ -91,7 +100,7 @@ export default function Layout({ children, user, onLogout }: Props) {
 
         {/* Nav */}
         <nav className="flex-1 p-4 space-y-1">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
