@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { type CalendarioCliente, type Bloque, DIAS_SEMANA, CALENDAR_COLORS } from '../../types'
 import { fmtFecha, addDays } from '../../context/CalendariosContext'
-import { EJERCICIOS } from '../../data/ejercicios'
+import { useEjercicios } from '../../context/EjerciciosContext'
 
 interface BloqueConColor extends Bloque {
   calId: string
@@ -91,6 +91,8 @@ export default function CalendarioCombinado({ calendarios, onVolver }: Props) {
     (acc, s) => acc + s.dias.reduce((a, d) => a + d.bloques.length, 0), 0
   )
 
+  const { ejercicios } = useEjercicios()
+
   function GridSemana({ semana }: { semana: SemanaFusion }) {
     return (
       <div className="overflow-x-auto -mx-4 lg:mx-0 px-4 lg:px-0">
@@ -144,7 +146,7 @@ export default function CalendarioCombinado({ calendarios, onVolver }: Props) {
                         {bloque.ejercicios.length > 0 && (
                           <div className="space-y-0.5">
                             {bloque.ejercicios.slice(0, 2).map(ej => {
-                              const ejercicio = EJERCICIOS.find(e => e.id === ej.ejercicioId)
+                              const ejercicio = ejercicios.find(e => e.id === ej.ejercicioId)
                               return (
                                 <p key={ej.id} className="text-tn-muted text-xs truncate">
                                   · {ejercicio?.nombre ?? '—'}

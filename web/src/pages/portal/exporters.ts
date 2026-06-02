@@ -2,7 +2,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { type CalendarioCliente, DIAS_SEMANA } from '../../types'
-import { EJERCICIOS } from '../../data/ejercicios'
+import { type Ejercicio } from '../../types'
 
 // ─── Helpers comunes ───────────────────────────────────────────────────────────
 
@@ -24,14 +24,14 @@ function fmtFecha(iso: string): string {
 }
 
 /** Aplana todos los calendarios a una lista de filas ordenada por fecha */
-export function aplanar(cals: CalendarioCliente[]): FilaPlan[] {
+export function aplanar(cals: CalendarioCliente[], catalogo: Ejercicio[]): FilaPlan[] {
   const filas: FilaPlan[] = []
   cals.forEach(cal => {
     cal.semanas.forEach(semana => {
       semana.dias.forEach((dia, diaIdx) => {
         dia.bloques.forEach(bloque => {
           const ejer = bloque.ejercicios.map(ej => {
-            const e = EJERCICIOS.find(x => x.id === ej.ejercicioId)
+            const e = catalogo.find(x => x.id === ej.ejercicioId)
             const parts = [e?.nombre ?? '—']
             if (ej.series && ej.reps) parts.push(`${ej.series}×${ej.reps}`)
             if (ej.descanso) parts.push(`desc ${ej.descanso}`)
@@ -85,8 +85,8 @@ function toCSV(headers: string[], rows: (string | number)[][]): string {
 
 // ─── PDF ───────────────────────────────────────────────────────────────────────
 
-export function exportarPDF(cals: CalendarioCliente[], clienteNombre: string) {
-  const filas = aplanar(cals)
+export function exportarPDF(cals: CalendarioCliente[], clienteNombre: string, catalogo: Ejercicio[]) {
+  const filas = aplanar(cals, catalogo)
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
 
   // Cabecera
@@ -158,8 +158,8 @@ export function exportarPDF(cals: CalendarioCliente[], clienteNombre: string) {
 
 // ─── Excel ─────────────────────────────────────────────────────────────────────
 
-export function exportarExcel(cals: CalendarioCliente[], clienteNombre: string) {
-  const filas = aplanar(cals)
+export function exportarExcel(cals: CalendarioCliente[], clienteNombre: string, catalogo: Ejercicio[]) {
+  const filas = aplanar(cals, catalogo)
   const wb = XLSX.utils.book_new()
 
   // Hoja 1: Todo plano
@@ -208,8 +208,8 @@ export function exportarExcel(cals: CalendarioCliente[], clienteNombre: string) 
 // Formato común para imports de Aimharder: fecha + clase/wod en texto.
 // Columnas: date, time, classname, description
 
-export function exportarAimharder(cals: CalendarioCliente[], clienteNombre: string) {
-  const filas = aplanar(cals)
+export function exportarAimharder(cals: CalendarioCliente[], clienteNombre: string, catalogo: Ejercicio[]) {
+  const filas = aplanar(cals, catalogo)
   const rows = filas.map(f => {
     const desc = [
       f.bloque,
@@ -235,8 +235,8 @@ export function exportarAimharder(cals: CalendarioCliente[], clienteNombre: stri
 // ─── Wodbuster (CSV) ──────────────────────────────────────────────────────────
 // Columnas habituales: Fecha, Tipo, Nombre, Descripción, Notas
 
-export function exportarWodbuster(cals: CalendarioCliente[], clienteNombre: string) {
-  const filas = aplanar(cals)
+export function exportarWodbuster(cals: CalendarioCliente[], clienteNombre: string, catalogo: Ejercicio[]) {
+  const filas = aplanar(cals, catalogo)
   const rows = filas.map(f => {
     const desc = [
       f.cronometro ? `Cronómetro: ${f.cronometro}` : '',

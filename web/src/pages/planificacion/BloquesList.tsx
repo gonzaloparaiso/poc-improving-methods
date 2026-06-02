@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { usePlanificacion } from '../../context/PlanificacionContext'
-import { EJERCICIOS } from '../../data/ejercicios'
+import { useEjercicios } from '../../context/EjerciciosContext'
 import { type Bloque } from '../../types'
 import BloqueModal from '../../components/planificacion/BloqueModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -16,6 +16,7 @@ function BloqueCard({ bloque, onEditar, onBorrar, onClonar, puedeEditar, puedeBo
   puedeBorrar: boolean
   puedeClonar: boolean
 }) {
+  const { ejercicios } = useEjercicios()
   const [expandido, setExpandido] = useState(false)
 
   return (
@@ -76,7 +77,7 @@ function BloqueCard({ bloque, onEditar, onBorrar, onClonar, puedeEditar, puedeBo
       {expandido && bloque.ejercicios.length > 0 && (
         <div className="border-t border-tn-border px-5 py-3 space-y-2 bg-tn-dark/30">
           {bloque.ejercicios.map((ej, i) => {
-            const ejercicio = EJERCICIOS.find(e => e.id === ej.ejercicioId)
+            const ejercicio = ejercicios.find(e => e.id === ej.ejercicioId)
             return (
               <div key={ej.id} className="flex items-center gap-3 text-sm">
                 <span className="w-5 h-5 rounded-full bg-tn-yellow/10 text-tn-yellow text-xs font-bold flex items-center justify-center flex-shrink-0">

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { type Programa, type Bloque, DIAS_SEMANA, type Semana } from '../../types'
 import { usePlanificacion } from '../../context/PlanificacionContext'
-import { EJERCICIOS } from '../../data/ejercicios'
+import { useEjercicios } from '../../context/EjerciciosContext'
 import BloqueModal from '../../components/planificacion/BloqueModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import AdjuntosPrograma from '../../components/planificacion/AdjuntosPrograma'
@@ -39,6 +39,7 @@ function GridSemana({
   puedeEditar: boolean
   puedeBorrar: boolean
 }) {
+  const { ejercicios } = useEjercicios()
   return (
     <div className="overflow-x-auto -mx-4 lg:mx-0 px-4 lg:px-0">
       <div className="grid grid-cols-7 gap-2 min-w-[700px]">
@@ -88,7 +89,7 @@ function GridSemana({
                     {bloque.ejercicios.length > 0 && (
                       <div className="space-y-0.5">
                         {bloque.ejercicios.slice(0, 3).map(ej => {
-                          const ejercicio = EJERCICIOS.find(e => e.id === ej.ejercicioId)
+                          const ejercicio = ejercicios.find(e => e.id === ej.ejercicioId)
                           return (
                             <p key={ej.id} className="text-tn-muted text-xs truncate">
                               · {ejercicio?.nombre ?? '—'}

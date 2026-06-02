@@ -59,6 +59,14 @@ export function puedeHacer(rol: Rol, seccion: Seccion, accion: Accion): boolean 
   return PERMISOS[rol]?.[seccion]?.includes(accion) ?? false
 }
 
+// ─── Ejercicios ───────────────────────────────────────────────────────────────
+export interface Ejercicio {
+  id: string
+  nombre: string
+  explicacion: string
+  video: string
+}
+
 // ─── Clientes ─────────────────────────────────────────────────────────────────
 export interface Cliente {
   id: string

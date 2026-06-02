@@ -4,6 +4,7 @@ import { UsersProvider } from './context/UsersContext'
 import { PlanificacionProvider } from './context/PlanificacionContext'
 import { ClientesProvider } from './context/ClientesContext'
 import { CalendariosProvider } from './context/CalendariosContext'
+import { EjerciciosProvider } from './context/EjerciciosContext'
 import { usePermisos } from './hooks/usePermisos'
 import { type Seccion, type Cliente } from './types'
 import Login from './pages/Login'
@@ -69,6 +70,7 @@ function App() {
     <UsersProvider>
       <ClientesProvider>
       <CalendariosProvider>
+      <EjerciciosProvider>
       <PlanificacionProvider>
         <BrowserRouter>
           <Routes>
@@ -114,6 +116,7 @@ function App() {
           </Routes>
         </BrowserRouter>
       </PlanificacionProvider>
+      </EjerciciosProvider>
       </CalendariosProvider>
       </ClientesProvider>
     </UsersProvider>

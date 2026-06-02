@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { type Cliente, type Bloque, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente } from '../../types'
 import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosContext'
-import { EJERCICIOS } from '../../data/ejercicios'
+import { useEjercicios } from '../../context/EjerciciosContext'
 import BloqueDetalleModal from './BloqueDetalleModal'
 import { exportarPDF, exportarExcel, exportarAimharder, exportarWodbuster } from './exporters'
 
@@ -77,6 +77,7 @@ type Vista = 'semana' | 'todas' | 'dia'
 
 export default function PortalCliente({ cliente, onLogout }: Props) {
   const { calendariosDeCliente } = useCalendarios()
+  const { ejercicios } = useEjercicios()
   const miscalendarios = calendariosDeCliente(cliente.id)
 
   // Selección de calendarios — por defecto todos seleccionados
@@ -123,10 +124,10 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
   const handleExport = (tipo: 'pdf' | 'excel' | 'aimharder' | 'wodbuster') => {
     setMenuExport(false)
-    if (tipo === 'pdf')       exportarPDF(calsAExportar, nombreCompleto)
-    if (tipo === 'excel')     exportarExcel(calsAExportar, nombreCompleto)
-    if (tipo === 'aimharder') exportarAimharder(calsAExportar, nombreCompleto)
-    if (tipo === 'wodbuster') exportarWodbuster(calsAExportar, nombreCompleto)
+    if (tipo === 'pdf')       exportarPDF(calsAExportar, nombreCompleto, ejercicios)
+    if (tipo === 'excel')     exportarExcel(calsAExportar, nombreCompleto, ejercicios)
+    if (tipo === 'aimharder') exportarAimharder(calsAExportar, nombreCompleto, ejercicios)
+    if (tipo === 'wodbuster') exportarWodbuster(calsAExportar, nombreCompleto, ejercicios)
   }
 
   const toggleCal = (id: string) => {
@@ -161,7 +162,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
         {bloque.ejercicios.length > 0 && (
           <div className="space-y-0.5 mt-1">
             {bloque.ejercicios.slice(0, 3).map(ej => {
-              const ejercicio = EJERCICIOS.find(e => e.id === ej.ejercicioId)
+              const ejercicio = ejercicios.find(e => e.id === ej.ejercicioId)
               return (
                 <p key={ej.id} className="text-tn-muted text-xs truncate">
                   · {ejercicio?.nombre ?? '—'}

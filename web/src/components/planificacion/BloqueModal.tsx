@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react'
 import { type Bloque, type EjercicioEnBloque } from '../../types'
-import { EJERCICIOS } from '../../data/ejercicios'
+import { useEjercicios } from '../../context/EjerciciosContext'
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
@@ -43,7 +43,9 @@ export default function BloqueModal({
     setError('')
   }, [bloque])
 
-  const ejerciciosFiltrados = EJERCICIOS.filter(e => {
+  const { ejercicios: catalogoEjercicios } = useEjercicios()
+
+  const ejerciciosFiltrados = catalogoEjercicios.filter(e => {
     const q = busquedaEj.toLowerCase()
     return !q || e.nombre.toLowerCase().includes(q)
   })
@@ -229,7 +231,7 @@ export default function BloqueModal({
             ) : (
               <div className="space-y-3">
                 {ejercicios.map((ej, idx) => {
-                  const ejercicio = EJERCICIOS.find(e => e.id === ej.ejercicioId)
+                  const ejercicio = catalogoEjercicios.find(e => e.id === ej.ejercicioId)
                   return (
                     <div key={ej.id} className="bg-tn-dark border border-tn-border rounded-xl p-4">
                       <div className="flex items-start justify-between gap-3 mb-3">

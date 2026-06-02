@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { type Bloque, CALENDAR_COLORS } from '../../types'
-import { EJERCICIOS } from '../../data/ejercicios'
+import { useEjercicios } from '../../context/EjerciciosContext'
+import { type Ejercicio } from '../../types'
 import EjercicioDetalleModal from './EjercicioDetalleModal'
 
 interface Props {
@@ -17,9 +18,10 @@ function fmtFechaLarga(iso: string): string {
 }
 
 export default function BloqueDetalleModal({ bloque, programaNombre, colorKey, fecha, onClose }: Props) {
+  const { ejercicios } = useEjercicios()
   const colorDef = CALENDAR_COLORS.find(c => c.key === colorKey) ?? CALENDAR_COLORS[0]
   const [ejercicioSel, setEjercicioSel] = useState<{
-    ej: typeof EJERCICIOS[number]
+    ej: Ejercicio
     series?: string; reps?: string; descanso?: string; notas?: string
   } | null>(null)
 
@@ -108,7 +110,7 @@ export default function BloqueDetalleModal({ bloque, programaNombre, colorKey, f
               </h4>
               <div className="space-y-2">
                 {bloque.ejercicios.map((ej, idx) => {
-                  const ejercicio = EJERCICIOS.find(e => e.id === ej.ejercicioId)
+                  const ejercicio = ejercicios.find(e => e.id === ej.ejercicioId)
                   if (!ejercicio) return null
                   return (
                     <button

@@ -1,12 +1,9 @@
-// Lista fija de ejercicios — el usuario la completará con su lista real
-export interface Ejercicio {
-  id: string
-  nombre: string
-  explicacion: string
-  video: string
-}
+// Lista semilla — al primer arranque se carga en EjerciciosContext (localStorage)
+// A partir de ahí, los ejercicios son editables (crear/editar/clonar/borrar)
+import { type Ejercicio } from '../types'
+export type { Ejercicio }
 
-export const EJERCICIOS: Ejercicio[] = [
+export const EJERCICIOS_SEED: Ejercicio[] = [
   { id: 'ex01', nombre: 'Back Squat',         explicacion: 'Sentadilla con barra en espalda alta. Pies a la anchura de hombros, rodillas hacia afuera, bajada hasta el paralelo o por debajo.',                video: '' },
   { id: 'ex02', nombre: 'Front Squat',         explicacion: 'Sentadilla con barra en posición frontal. Codos altos, torso vertical, movilidad de tobillo clave.',                                             video: '' },
   { id: 'ex03', nombre: 'Overhead Squat',      explicacion: 'Sentadilla con barra en extensión completa de brazos. Requiere movilidad de hombros, caderas y tobillos.',                                       video: '' },
