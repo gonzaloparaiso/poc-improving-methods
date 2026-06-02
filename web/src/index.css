@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    @apply bg-tn-black text-white antialiased font-sans;
+  }
+  #root {
+    @apply min-h-screen;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-tn-yellow text-tn-black font-bold py-3 px-6 rounded-lg hover:bg-tn-yellow-dark transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer;
+  }
+  .btn-secondary {
+    @apply bg-tn-card text-white font-semibold py-3 px-6 rounded-lg border border-tn-border hover:border-tn-yellow transition-all duration-200 cursor-pointer;
+  }
+  .btn-danger {
+    @apply bg-transparent text-red-400 font-semibold py-2 px-4 rounded-lg border border-red-400/30 hover:border-red-400 hover:bg-red-400/10 transition-all duration-200 cursor-pointer;
+  }
+  .input-field {
+    @apply w-full bg-tn-dark border border-tn-border rounded-lg px-4 py-3 text-white placeholder-tn-muted focus:outline-none focus:border-tn-yellow transition-colors;
+  }
+  .card {
+    @apply bg-tn-card border border-tn-border rounded-xl;
+  }
+  .label {
+    @apply block text-sm font-medium text-tn-muted mb-1.5;
+  }
+  .badge-active {
+    @apply inline-flex items-center gap-1 bg-green-400/10 text-green-400 text-xs font-semibold px-2.5 py-1 rounded-full;
+  }
+  .badge-inactive {
+    @apply inline-flex items-center gap-1 bg-tn-muted/10 text-tn-muted text-xs font-semibold px-2.5 py-1 rounded-full;
+  }
+}
