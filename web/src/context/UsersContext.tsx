@@ -1,6 +1,11 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import { type Usuario } from '../types'
 
+// crypto.randomUUID() requiere HTTPS — usamos una alternativa compatible con HTTP
+function genId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
+}
+
 // ─── Datos iniciales ──────────────────────────────────────────────────────────
 const INITIAL_USERS: Usuario[] = [
   {
@@ -74,7 +79,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   const crear = useCallback((data: Omit<Usuario, 'id' | 'creadoEn' | 'bajaEn'>) => {
     const nuevo: Usuario = {
       ...data,
-      id: crypto.randomUUID(),
+      id: genId(),
       creadoEn: new Date().toISOString(),
       bajaEn: null,
     }
