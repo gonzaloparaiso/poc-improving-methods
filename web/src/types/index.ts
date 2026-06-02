@@ -14,6 +14,8 @@ export interface Usuario {
   nombre: string
   apellido: string
   email: string
+  username: string
+  password: string      // plain text para el POC
   rol: Rol
   activo: boolean
   creadoEn: string      // ISO date string

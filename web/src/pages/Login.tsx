@@ -1,15 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { type User } from '../App'
+import { loginConCredenciales } from '../context/UsersContext'
 
 interface Props {
   onLogin: (user: User) => void
-}
-
-const HARDCODED_USER = {
-  username: 'admin',
-  password: 'admin',
-  role: 'Administrador',
-  nombre: 'Administrador',
 }
 
 export default function Login({ onLogin }: Props) {
@@ -24,14 +18,12 @@ export default function Login({ onLogin }: Props) {
     setLoading(true)
 
     setTimeout(() => {
-      if (
-        username === HARDCODED_USER.username &&
-        password === HARDCODED_USER.password
-      ) {
+      const usuario = loginConCredenciales(username.trim(), password)
+      if (usuario) {
         onLogin({
-          username: HARDCODED_USER.username,
-          role: HARDCODED_USER.role,
-          nombre: HARDCODED_USER.nombre,
+          username: usuario.username,
+          role: usuario.rol,
+          nombre: `${usuario.nombre}${usuario.apellido ? ' ' + usuario.apellido : ''}`,
         })
       } else {
         setError('Usuario o contraseña incorrectos')

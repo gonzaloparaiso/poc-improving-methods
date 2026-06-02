@@ -8,6 +8,8 @@ const INITIAL_USERS: Usuario[] = [
     nombre: 'Administrador',
     apellido: '',
     email: 'admin@trainingnorte.com',
+    username: 'admin',
+    password: 'admin',
     rol: 'administrador',
     activo: true,
     creadoEn: '2024-01-01T00:00:00.000Z',
@@ -20,7 +22,14 @@ const STORAGE_KEY = 'im_users'
 function loadUsers(): Usuario[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : INITIAL_USERS
+    if (!raw) return INITIAL_USERS
+    const parsed: Usuario[] = JSON.parse(raw)
+    // Migración: si algún usuario antiguo no tiene username/password, lo inicializamos
+    return parsed.map(u => ({
+      ...u,
+      username: u.username ?? '',
+      password: u.password ?? '',
+    }))
   } catch {
     return INITIAL_USERS
   }
@@ -28,6 +37,19 @@ function loadUsers(): Usuario[] {
 
 function saveUsers(users: Usuario[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(users))
+}
+
+// ─── Helpers de autenticación (usados por Login) ──────────────────────────────
+export function loginConCredenciales(
+  username: string,
+  password: string,
+): Usuario | null {
+  const users = loadUsers()
+  return (
+    users.find(
+      u => u.activo && u.username === username && u.password === password,
+    ) ?? null
+  )
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -64,9 +86,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     const next = current.map(u => {
       if (u.id !== id) return u
       const updated = { ...u, ...data }
-      // Si se desactiva y no tenía fecha de baja, la añadimos
       if (!updated.activo && !u.bajaEn) updated.bajaEn = new Date().toISOString()
-      // Si se reactiva, limpiamos la fecha de baja
       if (updated.activo) updated.bajaEn = null
       return updated
     })
