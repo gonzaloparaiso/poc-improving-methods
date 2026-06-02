@@ -72,13 +72,17 @@ export interface Cliente {
 // ─── Suscripciones ────────────────────────────────────────────────────────────
 export type TipoSuscripcion = 'unico' | 'recurrente'
 
+export interface ProgramaAsociado {
+  programaId: string
+  /** Solo para recurrentes: lunes de inicio de este programa */
+  fechaInicio: string | null
+}
+
 export interface CatalogoSuscripcion {
   id: string
   nombre: string
-  programaId: string | null
+  programas: ProgramaAsociado[]   // lista (antes era un solo programaId)
   tipo: TipoSuscripcion
-  /** Solo para recurrentes: lunes desde el que arranca el programa */
-  fechaInicioPrograma: string | null
   creadoEn: string
 }
 
@@ -104,15 +108,25 @@ export interface SemanaCalendario {
   dias: DiaCalendario[]  // siempre 7
 }
 
+// Paleta de colores para diferenciar calendarios
+export const CALENDAR_COLORS = [
+  { key: 'yellow',  accent: '#F5C300', cls: 'border-tn-yellow/60 bg-tn-yellow/5',  badge: 'bg-tn-yellow/20 text-tn-yellow'   },
+  { key: 'blue',    accent: '#60A5FA', cls: 'border-blue-400/60 bg-blue-400/5',    badge: 'bg-blue-400/20 text-blue-400'      },
+  { key: 'purple',  accent: '#A78BFA', cls: 'border-purple-400/60 bg-purple-400/5',badge: 'bg-purple-400/20 text-purple-400'  },
+  { key: 'green',   accent: '#34D399', cls: 'border-green-400/60 bg-green-400/5',  badge: 'bg-green-400/20 text-green-400'    },
+  { key: 'orange',  accent: '#FB923C', cls: 'border-orange-400/60 bg-orange-400/5',badge: 'bg-orange-400/20 text-orange-400'  },
+] as const
+
 export interface CalendarioCliente {
   id: string
   clienteId: string
   suscripcionClienteId: string
   programaId: string
   programaNombre: string
-  fechaInicio: string  // lunes de inicio
+  fechaInicio: string
   semanas: SemanaCalendario[]
   creadoEn: string
+  colorKey: string   // ref a CALENDAR_COLORS[].key
 }
 
 // ─── Planificación ────────────────────────────────────────────────────────────

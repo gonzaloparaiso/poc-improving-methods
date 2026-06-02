@@ -57,7 +57,7 @@ interface CalendariosCtxValue {
   calendarios: CalendarioCliente[]
   crearCalendario: (
     clienteId: string, suscripcionClienteId: string,
-    programa: Programa, fechaInicio?: string,
+    programa: Programa, fechaInicio?: string, colorKey?: string,
   ) => CalendarioCliente
   borrarCalendario: (id: string) => void
   calendariosDeCliente: (clienteId: string) => CalendarioCliente[]
@@ -83,9 +83,12 @@ export function CalendariosProvider({ children }: { children: ReactNode }) {
 
   const crearCalendario = useCallback((
     clienteId: string, suscripcionClienteId: string,
-    programa: Programa, fechaInicio?: string,
+    programa: Programa, fechaInicio?: string, colorKey?: string,
   ): CalendarioCliente => {
     const inicio = fechaInicio ?? siguienteLunes()
+    // Asignar color según cuántos calendarios tiene ya el cliente
+    const existentes = calendarios.filter(c => c.clienteId === clienteId)
+    const color = colorKey ?? ['yellow','blue','purple','green','orange'][existentes.length % 5]
     const nuevo: CalendarioCliente = {
       id: genId(),
       clienteId,
@@ -95,6 +98,7 @@ export function CalendariosProvider({ children }: { children: ReactNode }) {
       fechaInicio: inicio,
       semanas: instanciarPrograma(programa, inicio),
       creadoEn: new Date().toISOString(),
+      colorKey: color,
     }
     upd([...calendarios, nuevo])
     return nuevo

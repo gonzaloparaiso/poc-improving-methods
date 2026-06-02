@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion } from '../../types'
+import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion, CALENDAR_COLORS } from '../../types'
 import { useClientes } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
 import { useCalendarios, fmtFecha, siguienteLunes } from '../../context/CalendariosContext'
@@ -49,46 +49,50 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     cat => !missSuscsActivas.some(s => s.catalogoId === cat.id),
   )
 
-  /** Crear calendario para pago único (llamado tras asignar la suscripción) */
-  const handleAsignar = (catalogoId: string, suscripcionClienteId: string, fechaInicio?: string) => {
-    const cat = catalogo.find(c => c.id === catalogoId)
-    if (!cat?.programaId) return
-    const programa = programas.find(p => p.id === cat.programaId)
-    if (!programa) return
-    const fecha = fechaInicio ?? siguienteLunes()
-    crearCalendario(clienteActual.id, suscripcionClienteId, programa, fecha)
+  /** Crea calendarios para todos los programas de una suscripción recién asignada */
+  const crearCalendariosParaCat = (cat: CatalogoSuscripcion, scId: string, fechaOverride?: string) => {
+    cat.programas.forEach(pa => {
+      const programa = programas.find(p => p.id === pa.programaId)
+      if (!programa) return
+      const fecha = fechaOverride ?? (cat.tipo === 'recurrente' ? (pa.fechaInicio ?? siguienteLunes()) : siguienteLunes())
+      crearCalendario(clienteActual.id, scId, programa, fecha)
+    })
   }
 
-  /** Al pulsar una suscripción recurrente con programa: pedir fecha antes de asignar */
+  /** Lee la última suscripción asignada al cliente para un catálogo (desde localStorage, post-update) */
+  const getLastSc = (catalogoId: string) =>
+    [...(JSON.parse(localStorage.getItem('im_suscripciones_clientes') ?? '[]') as {id:string;clienteId:string;catalogoId:string;activa:boolean}[])]
+      .filter(s => s.clienteId === clienteActual.id && s.catalogoId === catalogoId && s.activa)
+      .at(-1)
+
+  /** Al pulsar una suscripción en el modal de asignar */
   const seleccionarCatalogo = (cat: CatalogoSuscripcion) => {
-    if (cat.tipo === 'recurrente' && cat.programaId) {
-      // Pre-rellenar con la fecha del catálogo o el siguiente lunes
+    const tieneRecurrenteSinFecha = cat.tipo === 'recurrente' && cat.programas.some(p => p.programaId && !p.fechaInicio)
+
+    if (cat.tipo === 'recurrente' && cat.programas.length > 0 && tieneRecurrenteSinFecha) {
+      // Algún programa no tiene fecha → pedir fecha global
       setCatPendiente(cat)
-      setFechaPendiente(cat.fechaInicioPrograma ?? siguienteLunes())
+      setFechaPendiente(cat.programas[0]?.fechaInicio ?? siguienteLunes())
       setAsignarModal(false)
     } else {
-      // Pago único: asignar directamente y crear calendario si tiene programa
+      // Pago único, o recurrente con todas las fechas ya fijadas en el catálogo
       asignarSuscripcion(clienteActual.id, cat.id)
       setTimeout(() => {
-        const sc = [...(JSON.parse(localStorage.getItem('im_suscripciones_clientes') ?? '[]') as {id:string;clienteId:string;catalogoId:string;activa:boolean}[])]
-          .filter(s => s.clienteId === clienteActual.id && s.catalogoId === cat.id && s.activa)
-          .at(-1)
-        if (sc) handleAsignar(cat.id, sc.id)
+        const sc = getLastSc(cat.id)
+        if (sc) crearCalendariosParaCat(cat, sc.id)
       }, 0)
       setAsignarModal(false)
     }
   }
 
-  /** Confirmar la fecha para recurrente */
+  /** Confirmar la fecha cuando el recurrente no la tenía en el catálogo */
   const confirmarRecurrente = () => {
     if (!catPendiente) return
     const fecha = getLunes(fechaPendiente)
     asignarSuscripcion(clienteActual.id, catPendiente.id)
     setTimeout(() => {
-      const sc = [...(JSON.parse(localStorage.getItem('im_suscripciones_clientes') ?? '[]') as {id:string;clienteId:string;catalogoId:string;activa:boolean}[])]
-        .filter(s => s.clienteId === clienteActual.id && s.catalogoId === catPendiente.id && s.activa)
-        .at(-1)
-      if (sc) handleAsignar(catPendiente.id, sc.id, fecha)
+      const sc = getLastSc(catPendiente.id)
+      if (sc) crearCalendariosParaCat(catPendiente, sc.id, fecha)
     }, 0)
     setCatPendiente(null)
   }
@@ -221,7 +225,6 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
           <div className="space-y-2">
             {missSuscs.map(s => {
               const cat = catalogo.find(c => c.id === s.catalogoId)
-              const programa = programas.find(p => p.id === cat?.programaId)
               return (
                 <div key={s.id} className={`card p-4 flex items-center gap-4 ${!s.activa ? 'opacity-50' : ''}`}>
                   {/* Icono tipo */}
@@ -248,9 +251,10 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                         : <span className="badge-inactive text-xs"><span className="w-1.5 h-1.5 rounded-full bg-tn-muted" />Inactiva</span>}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                      {programa && (
-                        <span className="text-tn-muted text-xs">📋 {programa.nombre}</span>
-                      )}
+                      {cat?.programas.map(pa => {
+                        const pr = programas.find(p => p.id === pa.programaId)
+                        return pr ? <span key={pa.programaId} className="text-tn-muted text-xs">📋 {pr.nombre}</span> : null
+                      })}
                       <span className="text-tn-muted text-xs">Desde {fmtDate(s.fechaInicio)}</span>
                       {cat?.tipo && (
                         <span className={`text-xs font-medium ${cat.tipo === 'recurrente' ? 'text-blue-400' : 'text-green-400'}`}>
@@ -315,7 +319,7 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                 </div>
               ) : (
                 catalogoDisponible.map(cat => {
-                  const programa = programas.find(p => p.id === cat.programaId)
+                  const progsAsoc = cat.programas.map(pa => programas.find(p => p.id === pa.programaId)).filter(Boolean)
                   return (
                     <button
                       key={cat.id}
@@ -344,9 +348,9 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                             <span className={`text-xs font-medium ${cat.tipo === 'recurrente' ? 'text-blue-400' : 'text-green-400'}`}>
                               {cat.tipo === 'recurrente' ? '↻ Recurrente' : '✓ Pago único'}
                             </span>
-                            {programa && (
-                              <span className="text-tn-muted text-xs">· {programa.nombre}</span>
-                            )}
+                            {progsAsoc.map(p => (
+                              <span key={p!.id} className="text-tn-muted text-xs">· {p!.nombre}</span>
+                            ))}
                           </div>
                         </div>
                         <svg className="w-4 h-4 text-tn-muted group-hover:text-tn-yellow transition-colors flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -379,11 +383,13 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
             Calendarios
           </h3>
           <div className="space-y-2">
-            {misCalendarios.map(cal => (
-              <div key={cal.id} className="card p-4 flex items-center justify-between gap-4 hover:border-tn-yellow/40 transition-all group">
+            {misCalendarios.map(cal => {
+              const colorDef = CALENDAR_COLORS.find(c => c.key === cal.colorKey) ?? CALENDAR_COLORS[0]
+              return (
+              <div key={cal.id} className={`card p-4 flex items-center justify-between gap-4 transition-all group border ${colorDef.cls} hover:opacity-90`}>
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-lg bg-tn-yellow/10 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className={`w-9 h-9 rounded-lg ${colorDef.badge} flex items-center justify-center flex-shrink-0`}>
+                    <svg className="w-4 h-4" style={{ color: colorDef.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
@@ -416,7 +422,8 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                   </button>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}

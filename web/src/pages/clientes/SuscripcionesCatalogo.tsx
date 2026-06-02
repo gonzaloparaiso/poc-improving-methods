@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useClientes } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
 import { useCalendarios } from '../../context/CalendariosContext'
-import { type CatalogoSuscripcion } from '../../types'
+import { type CatalogoSuscripcion, type ProgramaAsociado } from '../../types'
 import SuscripcionCatalogoModal from '../../components/clientes/SuscripcionCatalogoModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 
@@ -20,33 +20,24 @@ export default function SuscripcionesCatalogo() {
   const [editando, setEditando]   = useState<CatalogoSuscripcion | null>(null)
   const [borrando, setBorrando]   = useState<CatalogoSuscripcion | null>(null)
 
-  /** Tras guardar un catálogo recurrente+programa, crea calendarios a los clientes activos que no tienen uno */
-  const crearCalendariosParaClientesActivos = useCallback((catalogoId: string, fechaInicio: string) => {
-    const cat = catalogo.find(c => c.id === catalogoId)
-    if (!cat?.programaId) return
-    const programa = programas.find(p => p.id === cat.programaId)
-    if (!programa) return
+  /** Tras guardar, crea calendarios para todos los programas recurrentes con fecha a clientes activos */
+  const handleSaved = useCallback((catalogoId: string, progsGuardados: ProgramaAsociado[]) => {
+    const recurrentesConFecha = progsGuardados.filter(p => p.fechaInicio)
+    if (!recurrentesConFecha.length) return
 
-    // Clientes activos con esta suscripción
     const suscsActivas = suscripciones.filter(s => s.catalogoId === catalogoId && s.activa)
     suscsActivas.forEach(s => {
-      // Solo crear si no tiene ya un calendario para esta suscripción
-      const yaExiste = calendarios.some(c => c.suscripcionClienteId === s.id)
-      if (!yaExiste) {
-        crearCalendario(s.clienteId, s.id, programa, fechaInicio)
-      }
+      recurrentesConFecha.forEach((pa, idx) => {
+        const programa = programas.find(p => p.id === pa.programaId)
+        if (!programa) return
+        const yaExiste = calendarios.some(
+          c => c.suscripcionClienteId === s.id && c.programaId === pa.programaId
+        )
+        if (!yaExiste) crearCalendario(s.clienteId, s.id, programa, pa.fechaInicio!, undefined)
+        void idx
+      })
     })
-  }, [catalogo, programas, suscripciones, calendarios, crearCalendario])
-
-  const handleSaved = useCallback((catalogoId: string, fechaInicio: string | null) => {
-    if (!fechaInicio) return
-    // Si es edición, usamos el catalogoId directamente
-    // Si es nuevo (__nuevo__), buscamos el último del catálogo
-    const id = catalogoId === '__nuevo__'
-      ? [...catalogo].sort((a, b) => b.creadoEn.localeCompare(a.creadoEn))[0]?.id ?? ''
-      : catalogoId
-    if (id) crearCalendariosParaClientesActivos(id, fechaInicio)
-  }, [catalogo, crearCalendariosParaClientesActivos])
+  }, [suscripciones, programas, calendarios, crearCalendario])
 
   return (
     <div className="space-y-5">
@@ -103,20 +94,26 @@ export default function SuscripcionesCatalogo() {
               </thead>
               <tbody className="divide-y divide-tn-border">
                 {catalogo.map(s => {
-                  const programa = programas.find(p => p.id === s.programaId)
                   const clientesConEsta = suscripciones.filter(sc => sc.catalogoId === s.id && sc.activa).length
+                  const progsAsoc = s.programas.map(pa => programas.find(p => p.id === pa.programaId)).filter(Boolean)
                   return (
                     <tr key={s.id} className="hover:bg-tn-dark/40 transition-colors">
                       <td className="px-5 py-4">
                         <p className="text-white font-semibold text-sm">{s.nombre}</p>
-                        <p className="text-tn-muted text-xs mt-0.5 md:hidden">
-                          {programa?.nombre ?? <span className="italic">Sin programa</span>}
-                        </p>
+                        <div className="mt-0.5 md:hidden">
+                          {progsAsoc.length === 0
+                            ? <span className="text-tn-muted/50 text-xs italic">Sin programa</span>
+                            : progsAsoc.map(p => <span key={p!.id} className="text-tn-muted text-xs">{p!.nombre}</span>)}
+                        </div>
                       </td>
                       <td className="px-5 py-4 hidden md:table-cell">
-                        {programa
-                          ? <span className="text-tn-muted text-sm">{programa.nombre}</span>
-                          : <span className="text-tn-muted/50 text-sm italic">Sin programa</span>}
+                        {progsAsoc.length === 0
+                          ? <span className="text-tn-muted/50 text-sm italic">Sin programa</span>
+                          : <div className="flex flex-col gap-0.5">
+                              {progsAsoc.map(p => (
+                                <span key={p!.id} className="text-tn-muted text-sm">{p!.nombre}</span>
+                              ))}
+                            </div>}
                       </td>
                       <td className="px-5 py-4"><TipoBadge tipo={s.tipo} /></td>
                       <td className="px-5 py-4">

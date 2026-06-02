@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { type CalendarioCliente, type Bloque, type SemanaCalendario, DIAS_SEMANA } from '../../types'
+import { type CalendarioCliente, type Bloque, type SemanaCalendario, DIAS_SEMANA, CALENDAR_COLORS } from '../../types'
 import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosContext'
 import { EJERCICIOS } from '../../data/ejercicios'
 import BloqueModal from '../../components/planificacion/BloqueModal'
@@ -136,11 +136,13 @@ export default function CalendarioClienteView({ calendario, onVolver }: Props) {
   const ultimaSemana = cal.semanas[cal.semanas.length - 1]
   const fechaFin = ultimaSemana ? addDays(ultimaSemana.fechaLunes, 6) : cal.fechaInicio
 
+  const colorDef = CALENDAR_COLORS.find(c => c.key === cal.colorKey) ?? CALENDAR_COLORS[0]
+
   return (
     <div className="space-y-5">
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="flex items-start gap-4">
+      <div className={`flex items-start gap-4 p-4 rounded-xl border ${colorDef.cls}`}>
         <button onClick={onVolver}
           className="p-2 text-tn-muted hover:text-white hover:bg-tn-card rounded-lg transition-all mt-0.5">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -148,7 +150,12 @@ export default function CalendarioClienteView({ calendario, onVolver }: Props) {
           </svg>
         </button>
         <div className="flex-1 min-w-0">
-          <h2 className="text-2xl font-black text-white truncate">{cal.programaNombre}</h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-2xl font-black text-white truncate">{cal.programaNombre}</h2>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${colorDef.badge}`}>
+              {colorDef.key}
+            </span>
+          </div>
           <p className="text-tn-muted text-sm mt-0.5">
             {fmtFecha(cal.fechaInicio)} → {fmtFecha(fechaFin)}
             <span className="mx-2">·</span>
