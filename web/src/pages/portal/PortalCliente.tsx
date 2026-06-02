@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { type Cliente, type Bloque, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente } from '../../types'
 import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosContext'
 import { EJERCICIOS } from '../../data/ejercicios'
@@ -83,6 +83,18 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
     () => new Set(miscalendarios.map(c => c.id))
   )
+
+  // Si aparecen calendarios nuevos (asignación reciente del entrenador), añadirlos
+  useEffect(() => {
+    setSeleccionados(prev => {
+      const next = new Set(prev)
+      let cambio = false
+      miscalendarios.forEach(c => {
+        if (!next.has(c.id)) { next.add(c.id); cambio = true }
+      })
+      return cambio ? next : prev
+    })
+  }, [miscalendarios])
 
   const calsActivos = miscalendarios.filter(c => seleccionados.has(c.id))
   const semanas = useMemo(() => fusionarCalendarios(calsActivos), [calsActivos])

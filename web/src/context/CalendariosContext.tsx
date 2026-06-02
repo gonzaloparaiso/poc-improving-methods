@@ -50,7 +50,19 @@ const KEY = 'im_calendarios'
 function load<T>(key: string, fb: T): T {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fb } catch { return fb }
 }
-function save<T>(key: string, v: T) { localStorage.setItem(key, JSON.stringify(v)) }
+function save<T>(key: string, v: T) {
+  try {
+    localStorage.setItem(key, JSON.stringify(v))
+  } catch (err) {
+    console.error('[Calendarios] Error guardando en localStorage:', err)
+    // Cuota excedida: probable causa = adjuntos PDF en base64 demasiado grandes
+    alert(
+      'No se ha podido guardar el calendario. Es posible que tus PDFs adjuntos ocupen demasiado.\n\n' +
+      'Solución: reduce el tamaño de los PDF en el programa o elimina alguno.'
+    )
+    throw err
+  }
+}
 
 // ── Context ───────────────────────────────────────────────────────────────────
 interface CalendariosCtxValue {
