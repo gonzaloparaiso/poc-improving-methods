@@ -8,6 +8,7 @@ import Login from './pages/Login'
 import Layout from './components/Layout'
 import Administracion from './pages/Administracion'
 import Clientes from './pages/Clientes'
+import Suscripciones from './pages/Suscripciones'
 import Planificacion from './pages/Planificacion'
 
 export interface User {
@@ -52,6 +53,7 @@ function App() {
                       <Route path="/" element={<Navigate to="/administracion" replace />} />
                       <Route path="/administracion" element={<Administracion />} />
                       <Route path="/clientes" element={<Clientes />} />
+                      <Route path="/suscripciones" element={<Suscripciones />} />
                       <Route path="/planificacion" element={<Planificacion />} />
                     </Routes>
                   </Layout>
