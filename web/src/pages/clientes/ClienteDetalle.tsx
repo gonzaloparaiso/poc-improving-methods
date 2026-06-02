@@ -52,12 +52,33 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     cat => !missSuscsActivas.some(s => s.catalogoId === cat.id),
   )
 
-  /** Crea calendarios para todos los programas de una suscripción recién asignada */
+  /** Crea calendarios para todos los programas de una suscripción recién asignada.
+   *  Para recurrentes filtra: solo programas cuya fecha de inicio sea del mes en curso o posterior. */
   const crearCalendariosParaCat = (cat: CatalogoSuscripcion, scId: string, fechaOverride?: string) => {
+    // Inicio del mes actual (día 1)
+    const hoy = new Date()
+    const inicioMesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`
+
     cat.programas.forEach(pa => {
       const programa = programas.find(p => p.id === pa.programaId)
       if (!programa) return
-      const fecha = fechaOverride ?? (cat.tipo === 'recurrente' ? (pa.fechaInicio ?? siguienteLunes()) : siguienteLunes())
+
+      let fecha: string
+      if (fechaOverride) {
+        fecha = fechaOverride
+      } else if (cat.tipo === 'recurrente') {
+        // Si no tiene fecha en el catálogo → siguiente lunes
+        if (!pa.fechaInicio) {
+          fecha = siguienteLunes()
+        } else {
+          // Filtrar: si la fecha es anterior al mes en curso, no crear este calendario
+          if (pa.fechaInicio < inicioMesActual) return
+          fecha = pa.fechaInicio
+        }
+      } else {
+        // Pago único: todos desde el siguiente lunes
+        fecha = siguienteLunes()
+      }
       crearCalendario(clienteActual.id, scId, programa, fecha)
     })
   }

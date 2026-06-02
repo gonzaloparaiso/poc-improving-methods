@@ -85,9 +85,10 @@ export function CalendariosProvider({ children }: { children: ReactNode }) {
     clienteId: string, suscripcionClienteId: string,
     programa: Programa, fechaInicio?: string, colorKey?: string,
   ): CalendarioCliente => {
+    // Leer estado fresco (no del closure) para soportar varias llamadas seguidas
+    const actuales = load<CalendarioCliente[]>(KEY, [])
     const inicio = fechaInicio ?? siguienteLunes()
-    // Asignar color según cuántos calendarios tiene ya el cliente
-    const existentes = calendarios.filter(c => c.clienteId === clienteId)
+    const existentes = actuales.filter(c => c.clienteId === clienteId)
     const color = colorKey ?? ['yellow','blue','purple','green','orange'][existentes.length % 5]
     const nuevo: CalendarioCliente = {
       id: genId(),
@@ -100,9 +101,9 @@ export function CalendariosProvider({ children }: { children: ReactNode }) {
       creadoEn: new Date().toISOString(),
       colorKey: color,
     }
-    upd([...calendarios, nuevo])
+    upd([...actuales, nuevo])
     return nuevo
-  }, [calendarios, upd])
+  }, [upd])
 
   const borrarCalendario = useCallback((id: string) => {
     upd(calendarios.filter(c => c.id !== id))

@@ -22,21 +22,24 @@ export default function SuscripcionesCatalogo() {
   const [editando, setEditando]   = useState<CatalogoSuscripcion | null>(null)
   const [borrando, setBorrando]   = useState<CatalogoSuscripcion | null>(null)
 
-  /** Tras guardar, crea calendarios para todos los programas recurrentes con fecha a clientes activos */
+  /** Tras guardar, crea calendarios para programas recurrentes a clientes activos.
+   *  Filtra: solo programas con fechaInicio del mes en curso o posterior. */
   const handleSaved = useCallback((catalogoId: string, progsGuardados: ProgramaAsociado[]) => {
-    const recurrentesConFecha = progsGuardados.filter(p => p.fechaInicio)
-    if (!recurrentesConFecha.length) return
+    const hoy = new Date()
+    const inicioMesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`
+
+    const aPlanificar = progsGuardados.filter(p => p.fechaInicio && p.fechaInicio >= inicioMesActual)
+    if (!aPlanificar.length) return
 
     const suscsActivas = suscripciones.filter(s => s.catalogoId === catalogoId && s.activa)
     suscsActivas.forEach(s => {
-      recurrentesConFecha.forEach((pa, idx) => {
+      aPlanificar.forEach(pa => {
         const programa = programas.find(p => p.id === pa.programaId)
         if (!programa) return
         const yaExiste = calendarios.some(
           c => c.suscripcionClienteId === s.id && c.programaId === pa.programaId
         )
         if (!yaExiste) crearCalendario(s.clienteId, s.id, programa, pa.fechaInicio!, undefined)
-        void idx
       })
     })
   }, [suscripciones, programas, calendarios, crearCalendario])
