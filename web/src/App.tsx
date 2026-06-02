@@ -1,10 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useState } from 'react'
 import { UsersProvider } from './context/UsersContext'
+import { PlanificacionProvider } from './context/PlanificacionContext'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import Administracion from './pages/Administracion'
 import Clientes from './pages/Clientes'
+import Planificacion from './pages/Planificacion'
 
 export interface User {
   username: string
@@ -30,30 +32,33 @@ function App() {
 
   return (
     <UsersProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/login"
-            element={user ? <Navigate to="/" replace /> : <Login onLogin={login} />}
-          />
-          <Route
-            path="/*"
-            element={
-              user ? (
-                <Layout user={user} onLogout={logout}>
-                  <Routes>
-                    <Route path="/" element={<Navigate to="/administracion" replace />} />
-                    <Route path="/administracion" element={<Administracion />} />
-                    <Route path="/clientes" element={<Clientes />} />
-                  </Routes>
-                </Layout>
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
-        </Routes>
-      </BrowserRouter>
+      <PlanificacionProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route
+              path="/login"
+              element={user ? <Navigate to="/" replace /> : <Login onLogin={login} />}
+            />
+            <Route
+              path="/*"
+              element={
+                user ? (
+                  <Layout user={user} onLogout={logout}>
+                    <Routes>
+                      <Route path="/" element={<Navigate to="/administracion" replace />} />
+                      <Route path="/administracion" element={<Administracion />} />
+                      <Route path="/clientes" element={<Clientes />} />
+                      <Route path="/planificacion" element={<Planificacion />} />
+                    </Routes>
+                  </Layout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
+          </Routes>
+        </BrowserRouter>
+      </PlanificacionProvider>
     </UsersProvider>
   )
 }

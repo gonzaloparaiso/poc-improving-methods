@@ -59,3 +59,47 @@ export const PERMISOS: Record<Rol, MatrizPermisos> = {
 export function puedeHacer(rol: Rol, seccion: Seccion, accion: Accion): boolean {
   return PERMISOS[rol]?.[seccion]?.includes(accion) ?? false
 }
+
+// ─── Planificación ────────────────────────────────────────────────────────────
+
+export const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'] as const
+export type DiaSemana = typeof DIAS_SEMANA[number]
+
+export interface EjercicioEnBloque {
+  id: string           // id local dentro del bloque
+  ejercicioId: string  // ref a EJERCICIOS[]
+  series: string       // "3", "AMRAP"
+  reps: string         // "10", "10-12", "Max"
+  descanso: string     // "60s", "2 min"
+  notas: string
+}
+
+export interface Bloque {
+  id: string
+  nombre: string
+  instrucciones: string
+  notas: string
+  cronometro: string           // "20:00", "" si no tiene
+  ejercicios: EjercicioEnBloque[]
+  esPlantilla: boolean
+  creadoEn: string
+}
+
+export interface DiaPrograma {
+  // índice 0-6 implícito por posición en el array
+  bloques: Bloque[]
+}
+
+export interface Semana {
+  id: string
+  numero: number
+  dias: DiaPrograma[]  // siempre 7 elementos
+}
+
+export interface Programa {
+  id: string
+  nombre: string
+  descripcion: string
+  semanas: Semana[]
+  creadoEn: string
+}
