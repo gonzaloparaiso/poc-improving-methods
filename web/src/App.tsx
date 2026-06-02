@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useState } from 'react'
+import { UsersProvider } from './context/UsersContext'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import Administracion from './pages/Administracion'
@@ -28,30 +29,32 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/login"
-          element={user ? <Navigate to="/" replace /> : <Login onLogin={login} />}
-        />
-        <Route
-          path="/*"
-          element={
-            user ? (
-              <Layout user={user} onLogout={logout}>
-                <Routes>
-                  <Route path="/" element={<Navigate to="/administracion" replace />} />
-                  <Route path="/administracion" element={<Administracion />} />
-                  <Route path="/clientes" element={<Clientes />} />
-                </Routes>
-              </Layout>
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-      </Routes>
-    </BrowserRouter>
+    <UsersProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route
+            path="/login"
+            element={user ? <Navigate to="/" replace /> : <Login onLogin={login} />}
+          />
+          <Route
+            path="/*"
+            element={
+              user ? (
+                <Layout user={user} onLogout={logout}>
+                  <Routes>
+                    <Route path="/" element={<Navigate to="/administracion" replace />} />
+                    <Route path="/administracion" element={<Administracion />} />
+                    <Route path="/clientes" element={<Clientes />} />
+                  </Routes>
+                </Layout>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+        </Routes>
+      </BrowserRouter>
+    </UsersProvider>
   )
 }
 
