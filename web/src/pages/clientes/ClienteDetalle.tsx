@@ -6,6 +6,7 @@ import { useCalendarios, fmtFecha, siguienteLunes } from '../../context/Calendar
 import ClienteModal from '../../components/clientes/ClienteModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import CalendarioClienteView from './CalendarioClienteView'
+import CalendarioCombinado from './CalendarioCombinado'
 import LunesPicker, { getLunes } from '../../components/LunesPicker'
 
 function fmtDate(iso: string | null) {
@@ -35,6 +36,8 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   const [quitarSusc, setQuitarSusc]       = useState<string | null>(null)
   const [calendarioAbierto, setCalendarioAbierto] = useState<CalendarioCliente | null>(null)
   const [borrarCal, setBorrarCal]         = useState<CalendarioCliente | null>(null)
+  const [seleccion, setSeleccion]         = useState<Set<string>>(new Set())
+  const [vistaCombi, setVistaCombi]       = useState(false)
 
   // Para recurrentes: paso intermedio de elección de fecha
   const [catPendiente, setCatPendiente]   = useState<CatalogoSuscripcion | null>(null)
@@ -97,7 +100,18 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     setCatPendiente(null)
   }
 
-  // Vista de calendario
+  // Vista combinada
+  if (vistaCombi && seleccion.size > 0) {
+    const calsSeleccionados = misCalendarios.filter(c => seleccion.has(c.id))
+    return (
+      <CalendarioCombinado
+        calendarios={calsSeleccionados}
+        onVolver={() => setVistaCombi(false)}
+      />
+    )
+  }
+
+  // Vista de calendario individual
   if (calendarioAbierto) {
     return (
       <CalendarioClienteView
@@ -375,20 +389,67 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
       {/* ── Calendarios ─────────────────────────────────────────────────── */}
       {misCalendarios.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-white font-bold flex items-center gap-2">
-            <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            Calendarios
-          </h3>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-white font-bold flex items-center gap-2">
+              <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Calendarios
+              <span className="text-tn-muted font-normal text-sm">({misCalendarios.length})</span>
+            </h3>
+            {seleccion.size > 0 && (
+              <button
+                onClick={() => setVistaCombi(true)}
+                className="btn-primary text-sm py-2 px-4 flex items-center gap-1.5"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+                Ver combinado ({seleccion.size})
+              </button>
+            )}
+          </div>
+
+          {misCalendarios.length > 1 && seleccion.size === 0 && (
+            <p className="text-tn-muted text-xs">
+              Marca varios calendarios para verlos juntos y comprobar el equilibrio semanal.
+            </p>
+          )}
+
           <div className="space-y-2">
             {misCalendarios.map(cal => {
               const colorDef = CALENDAR_COLORS.find(c => c.key === cal.colorKey) ?? CALENDAR_COLORS[0]
+              const checked = seleccion.has(cal.id)
+              const toggleSeleccion = () => {
+                const next = new Set(seleccion)
+                if (checked) next.delete(cal.id); else next.add(cal.id)
+                setSeleccion(next)
+              }
               return (
-              <div key={cal.id} className={`card p-4 flex items-center justify-between gap-4 transition-all group border ${colorDef.cls} hover:opacity-90`}>
+              <div
+                key={cal.id}
+                onClick={toggleSeleccion}
+                className={`card p-4 flex items-center justify-between gap-4 transition-all group cursor-pointer border ${
+                  checked ? colorDef.cls + ' opacity-100' : 'border-tn-border hover:border-tn-border/80'
+                }`}
+              >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-9 h-9 rounded-lg ${colorDef.badge} flex items-center justify-center flex-shrink-0`}>
+                  {/* Checkbox visual */}
+                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                    checked ? 'border-transparent' : 'border-tn-border group-hover:border-tn-muted'
+                  }`}
+                    style={checked ? { backgroundColor: colorDef.accent, borderColor: colorDef.accent } : {}}
+                  >
+                    {checked && (
+                      <svg className="w-3 h-3 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+
+                  <div className={`w-8 h-8 rounded-lg ${colorDef.badge} flex items-center justify-center flex-shrink-0`}>
                     <svg className="w-4 h-4" style={{ color: colorDef.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -401,7 +462,7 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
                   <button
                     onClick={() => setCalendarioAbierto(cal)}
                     className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5"
