@@ -3,6 +3,7 @@ import { type Cliente, type Bloque, DIAS_SEMANA, CALENDAR_COLORS, type Calendari
 import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosContext'
 import { EJERCICIOS } from '../../data/ejercicios'
 import BloqueDetalleModal from './BloqueDetalleModal'
+import { exportarPDF, exportarExcel, exportarAimharder, exportarWodbuster } from './exporters'
 
 interface Props {
   cliente: Cliente
@@ -101,6 +102,20 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
   // Bloque seleccionado para ver detalle
   const [bloqueSel, setBloqueSel] = useState<{ bloque: BloqueConColor; fecha: string } | null>(null)
+
+  // Menú de exportar
+  const [menuExport, setMenuExport] = useState(false)
+
+  const nombreCompleto = `${cliente.nombre}${cliente.apellido ? ' ' + cliente.apellido : ''}`
+  const calsAExportar = calsActivos.length > 0 ? calsActivos : miscalendarios
+
+  const handleExport = (tipo: 'pdf' | 'excel' | 'aimharder' | 'wodbuster') => {
+    setMenuExport(false)
+    if (tipo === 'pdf')       exportarPDF(calsAExportar, nombreCompleto)
+    if (tipo === 'excel')     exportarExcel(calsAExportar, nombreCompleto)
+    if (tipo === 'aimharder') exportarAimharder(calsAExportar, nombreCompleto)
+    if (tipo === 'wodbuster') exportarWodbuster(calsAExportar, nombreCompleto)
+  }
 
   const toggleCal = (id: string) => {
     const next = new Set(seleccionados)
@@ -221,9 +236,67 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
             <h1 className="text-white font-black text-xl truncate">¡Hola, {cliente.nombre}!</h1>
             <p className="text-tn-muted text-sm capitalize">{fmtFechaLarga(hoyISO)}</p>
           </div>
-          <div className="text-right">
-            <p className="text-tn-yellow font-black text-2xl">{miscalendarios.length}</p>
-            <p className="text-tn-muted text-xs">programa{miscalendarios.length !== 1 ? 's' : ''} activo{miscalendarios.length !== 1 ? 's' : ''}</p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="text-right">
+              <p className="text-tn-yellow font-black text-2xl leading-none">{miscalendarios.length}</p>
+              <p className="text-tn-muted text-xs">programa{miscalendarios.length !== 1 ? 's' : ''} activo{miscalendarios.length !== 1 ? 's' : ''}</p>
+            </div>
+            {/* Botón exportar */}
+            <div className="relative">
+              <button
+                onClick={() => setMenuExport(v => !v)}
+                className="btn-secondary flex items-center gap-2 text-sm py-2 px-3"
+                title="Exportar planificación"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span className="hidden sm:inline">Exportar</span>
+                <svg className={`w-3 h-3 transition-transform ${menuExport ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {menuExport && (
+                <>
+                  {/* Backdrop para cerrar al hacer click fuera */}
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuExport(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-64 card shadow-2xl z-50 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-tn-border">
+                      <p className="text-white font-bold text-sm">Exportar planificación</p>
+                      <p className="text-tn-muted text-xs mt-0.5">
+                        {calsAExportar.length} programa{calsAExportar.length !== 1 ? 's' : ''} seleccionado{calsAExportar.length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    <div className="py-1">
+                      {[
+                        { id: 'pdf' as const,       label: 'PDF',        desc: 'Documento imprimible',           color: 'text-red-400' },
+                        { id: 'excel' as const,     label: 'Excel',      desc: 'Hoja por programa',              color: 'text-green-400' },
+                        { id: 'aimharder' as const, label: 'Aimharder',  desc: 'CSV importable',                 color: 'text-blue-400' },
+                        { id: 'wodbuster' as const, label: 'Wodbuster',  desc: 'CSV importable',                 color: 'text-purple-400' },
+                      ].map(opt => (
+                        <button
+                          key={opt.id}
+                          onClick={() => handleExport(opt.id)}
+                          disabled={calsAExportar.length === 0}
+                          className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-tn-dark transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <svg className={`w-5 h-5 ${opt.color}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm font-semibold">{opt.label}</p>
+                            <p className="text-tn-muted text-xs">{opt.desc}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
