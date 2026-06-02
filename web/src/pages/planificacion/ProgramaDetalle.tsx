@@ -4,6 +4,7 @@ import { usePlanificacion } from '../../context/PlanificacionContext'
 import { EJERCICIOS } from '../../data/ejercicios'
 import BloqueModal from '../../components/planificacion/BloqueModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import AdjuntosPrograma from '../../components/planificacion/AdjuntosPrograma'
 import { usePermisos } from '../../hooks/usePermisos'
 
 interface Props {
@@ -179,6 +180,9 @@ export default function ProgramaDetalle({ programa, onVolver }: Props) {
           {programa.descripcion && <p className="text-tn-muted text-sm mt-0.5">{programa.descripcion}</p>}
         </div>
       </div>
+
+      {/* ── Adjuntos PDF ────────────────────────────────────────────────── */}
+      <AdjuntosPrograma programa={programa} />
 
       {/* ── Tabs de semanas ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 flex-wrap">

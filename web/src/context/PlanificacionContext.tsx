@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import { type Programa, type Bloque, type Semana, type DiaPrograma } from '../types'
+import { type Programa, type Bloque, type Semana, type DiaPrograma, type Adjunto } from '../types'
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
@@ -38,6 +38,10 @@ interface PlanificacionContextValue {
   borrarPrograma: (id: string) => void
   añadirSemana: (programaId: string) => void
   borrarSemana: (programaId: string, semanaId: string) => void
+
+  // Adjuntos del programa
+  añadirAdjunto: (programaId: string, adjunto: Omit<Adjunto, 'id' | 'subidoEn'>) => void
+  borrarAdjunto: (programaId: string, adjuntoId: string) => void
 
   // Bloques dentro de días
   añadirBloqueAlDia: (programaId: string, semanaId: string, diaIdx: number, bloque: Omit<Bloque, 'id' | 'creadoEn'>) => void
@@ -97,6 +101,26 @@ export function PlanificacionProvider({ children }: { children: ReactNode }) {
       semanas: p.semanas
         .filter(s => s.id !== semanaId)
         .map((s, i) => ({ ...s, numero: i + 1 })),
+    }))
+  }, [mutarPrograma])
+
+  // ── Adjuntos del programa ──
+  const añadirAdjunto = useCallback((programaId: string, adjunto: Omit<Adjunto, 'id' | 'subidoEn'>) => {
+    const nuevo: Adjunto = {
+      ...adjunto,
+      id: genId(),
+      subidoEn: new Date().toISOString(),
+    }
+    mutarPrograma(programaId, p => ({
+      ...p,
+      adjuntos: [...(p.adjuntos ?? []), nuevo],
+    }))
+  }, [mutarPrograma])
+
+  const borrarAdjunto = useCallback((programaId: string, adjuntoId: string) => {
+    mutarPrograma(programaId, p => ({
+      ...p,
+      adjuntos: (p.adjuntos ?? []).filter(a => a.id !== adjuntoId),
     }))
   }, [mutarPrograma])
 
@@ -169,6 +193,7 @@ export function PlanificacionProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       programas, crearPrograma, editarPrograma, borrarPrograma, añadirSemana, borrarSemana,
+      añadirAdjunto, borrarAdjunto,
       añadirBloqueAlDia, editarBloqueDelDia, borrarBloqueDelDia,
       plantillas, crearPlantilla, editarPlantilla, borrarPlantilla,
     }}>

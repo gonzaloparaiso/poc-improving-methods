@@ -331,6 +331,59 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           </div>
         )}
 
+        {/* PDFs adjuntos de los programas seleccionados */}
+        {(() => {
+          const pdfs = calsActivos.flatMap(cal =>
+            (cal.adjuntos ?? []).map(a => ({ ...a, programa: cal.programaNombre, colorKey: cal.colorKey }))
+          )
+          if (pdfs.length === 0) return null
+          const descargar = (dataUrl: string, nombre: string) => {
+            const a = document.createElement('a')
+            a.href = dataUrl; a.download = nombre
+            document.body.appendChild(a); a.click(); document.body.removeChild(a)
+          }
+          return (
+            <div className="space-y-2">
+              <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider flex items-center gap-2">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                Documentos
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {pdfs.map(p => {
+                  const colorDef = CALENDAR_COLORS.find(c => c.key === p.colorKey) ?? CALENDAR_COLORS[0]
+                  return (
+                    <button key={p.id}
+                      onClick={() => descargar(p.dataUrl, p.nombre)}
+                      className="flex items-center gap-2.5 bg-tn-card border border-tn-border rounded-xl px-3 py-2 hover:border-tn-yellow transition-all group max-w-full">
+                      <div className="w-8 h-8 bg-red-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 7V3.5L18.5 9H13z" />
+                        </svg>
+                      </div>
+                      <div className="text-left min-w-0">
+                        <p className="text-white text-sm font-semibold truncate max-w-[180px] group-hover:text-tn-yellow transition-colors">
+                          {p.nombre}
+                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: colorDef.accent }} />
+                          <span className="text-tn-muted text-xs truncate">{p.programa}</span>
+                        </div>
+                      </div>
+                      <svg className="w-4 h-4 text-tn-muted group-hover:text-tn-yellow flex-shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+
         {/* Selector vista */}
         <div className="flex gap-1 bg-tn-dark border border-tn-border rounded-xl p-1 w-fit">
           {([

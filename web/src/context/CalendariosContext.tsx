@@ -107,6 +107,7 @@ export function CalendariosProvider({ children }: { children: ReactNode }) {
       semanas: instanciarPrograma(programa, inicio),
       creadoEn: new Date().toISOString(),
       colorKey: color,
+      adjuntos: programa.adjuntos ? JSON.parse(JSON.stringify(programa.adjuntos)) : [],
     }
     upd([...actuales, nuevo])
     return nuevo

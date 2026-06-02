@@ -130,7 +130,8 @@ export interface CalendarioCliente {
   fechaInicio: string
   semanas: SemanaCalendario[]
   creadoEn: string
-  colorKey: string   // ref a CALENDAR_COLORS[].key
+  colorKey: string
+  adjuntos?: Adjunto[]   // copia de programa.adjuntos al instanciar
 }
 
 // ─── Planificación ────────────────────────────────────────────────────────────
@@ -167,10 +168,19 @@ export interface Semana {
   dias: DiaPrograma[]
 }
 
+export interface Adjunto {
+  id: string
+  nombre: string       // nombre del fichero
+  dataUrl: string      // base64 data URL
+  size: number         // bytes
+  subidoEn: string
+}
+
 export interface Programa {
   id: string
   nombre: string
   descripcion: string
   semanas: Semana[]
   creadoEn: string
+  adjuntos?: Adjunto[]
 }
