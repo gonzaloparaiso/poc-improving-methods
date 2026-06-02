@@ -2,14 +2,17 @@ import { useState, type FormEvent } from 'react'
 import { usePlanificacion } from '../../context/PlanificacionContext'
 import { type Programa } from '../../types'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import PromptDialog from '../../components/PromptDialog'
 import ProgramaDetalle from './ProgramaDetalle'
 import { usePermisos } from '../../hooks/usePermisos'
 
-function ProgramaCard({ programa, onAbrir, onBorrar, puedeBorrar }: {
+function ProgramaCard({ programa, onAbrir, onBorrar, onClonar, puedeBorrar, puedeClonar }: {
   programa: Programa
   onAbrir: () => void
   onBorrar: () => void
+  onClonar: () => void
   puedeBorrar: boolean
+  puedeClonar: boolean
 }) {
   const totalBloques = programa.semanas.reduce((acc, s) =>
     acc + s.dias.reduce((a, d) => a + d.bloques.length, 0), 0)
@@ -45,29 +48,45 @@ function ProgramaCard({ programa, onAbrir, onBorrar, puedeBorrar }: {
             </span>
           </div>
         </div>
-        {puedeBorrar && (
-          <button
-            onClick={e => { e.stopPropagation(); onBorrar() }}
-            className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
-        )}
+        <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-all">
+          {puedeClonar && (
+            <button
+              onClick={e => { e.stopPropagation(); onClonar() }}
+              title="Clonar programa"
+              className="p-2 text-tn-muted hover:text-tn-yellow hover:bg-tn-yellow/5 rounded-lg transition-all"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          )}
+          {puedeBorrar && (
+            <button
+              onClick={e => { e.stopPropagation(); onBorrar() }}
+              title="Eliminar programa"
+              className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
 export default function ProgramasList() {
-  const { programas, crearPrograma, borrarPrograma } = usePlanificacion()
+  const { programas, crearPrograma, borrarPrograma, clonarPrograma } = usePlanificacion()
   const { puede } = usePermisos()
   const [programaAbierto, setProgramaAbierto] = useState<Programa | null>(null)
   const [modalNuevo, setModalNuevo]           = useState(false)
   const [nombre, setNombre]                   = useState('')
   const [descripcion, setDescripcion]         = useState('')
   const [borrando, setBorrando]               = useState<Programa | null>(null)
+  const [clonando, setClonando]               = useState<Programa | null>(null)
 
   const handleCrear = (e: FormEvent) => {
     e.preventDefault()
@@ -134,7 +153,9 @@ export default function ProgramasList() {
               programa={p}
               onAbrir={() => setProgramaAbierto(p)}
               onBorrar={() => setBorrando(p)}
+              onClonar={() => setClonando(p)}
               puedeBorrar={puede('planificaciones', 'borrar')}
+              puedeClonar={puede('planificaciones', 'crear')}
             />
           ))}
         </div>
@@ -195,6 +216,22 @@ export default function ProgramasList() {
           confirmLabel="Eliminar"
           onConfirm={() => { borrarPrograma(borrando.id); setBorrando(null) }}
           onCancel={() => setBorrando(null)}
+        />
+      )}
+
+      {clonando && (
+        <PromptDialog
+          title="Clonar programa"
+          description="Se copiarán todas las semanas, bloques, ejercicios y adjuntos."
+          label="Nombre del nuevo programa"
+          defaultValue={`${clonando.nombre} (copia)`}
+          confirmLabel="Clonar"
+          onConfirm={nombre => {
+            const nuevo = clonarPrograma(clonando.id, nombre)
+            setClonando(null)
+            if (nuevo) setProgramaAbierto(nuevo)
+          }}
+          onCancel={() => setClonando(null)}
         />
       )}
     </div>

@@ -38,6 +38,7 @@ interface PlanificacionContextValue {
   borrarPrograma: (id: string) => void
   añadirSemana: (programaId: string) => void
   borrarSemana: (programaId: string, semanaId: string) => void
+  clonarPrograma: (id: string, nuevoNombre: string) => Programa | null
 
   // Adjuntos del programa
   añadirAdjunto: (programaId: string, adjunto: Omit<Adjunto, 'id' | 'subidoEn'>) => void
@@ -53,6 +54,7 @@ interface PlanificacionContextValue {
   crearPlantilla: (data: Omit<Bloque, 'id' | 'creadoEn' | 'esPlantilla'>) => void
   editarPlantilla: (id: string, data: Partial<Omit<Bloque, 'id' | 'creadoEn'>>) => void
   borrarPlantilla: (id: string) => void
+  clonarPlantilla: (id: string, nuevoNombre: string) => Bloque | null
 }
 
 const Ctx = createContext<PlanificacionContextValue | null>(null)
@@ -86,6 +88,36 @@ export function PlanificacionProvider({ children }: { children: ReactNode }) {
 
   const borrarPrograma = useCallback((id: string) => {
     updateProgramas(programas.filter(p => p.id !== id))
+  }, [programas, updateProgramas])
+
+  /** Clona un programa con nuevo nombre. Regenera ids de semanas/bloques/ejercicios */
+  const clonarPrograma = useCallback((id: string, nuevoNombre: string): Programa | null => {
+    const original = programas.find(p => p.id === id)
+    if (!original) return null
+    const clon: Programa = {
+      ...JSON.parse(JSON.stringify(original)),
+      id: genId(),
+      nombre: nuevoNombre,
+      creadoEn: new Date().toISOString(),
+    }
+    // Regenerar todos los ids internos
+    clon.semanas = clon.semanas.map(s => ({
+      ...s,
+      id: genId(),
+      dias: s.dias.map(d => ({
+        ...d,
+        bloques: d.bloques.map(b => ({
+          ...b,
+          id: genId(),
+          ejercicios: b.ejercicios.map(e => ({ ...e, id: genId() })),
+        })),
+      })),
+    }))
+    if (clon.adjuntos) {
+      clon.adjuntos = clon.adjuntos.map(a => ({ ...a, id: genId() }))
+    }
+    updateProgramas([...programas, clon])
+    return clon
   }, [programas, updateProgramas])
 
   const añadirSemana = useCallback((programaId: string) => {
@@ -190,12 +222,27 @@ export function PlanificacionProvider({ children }: { children: ReactNode }) {
     updatePlantillas(plantillas.filter(p => p.id !== id))
   }, [plantillas, updatePlantillas])
 
+  /** Clona una plantilla de bloque con nuevo nombre */
+  const clonarPlantilla = useCallback((id: string, nuevoNombre: string): Bloque | null => {
+    const original = plantillas.find(p => p.id === id)
+    if (!original) return null
+    const clon: Bloque = {
+      ...JSON.parse(JSON.stringify(original)),
+      id: genId(),
+      nombre: nuevoNombre,
+      creadoEn: new Date().toISOString(),
+      ejercicios: original.ejercicios.map(e => ({ ...e, id: genId() })),
+    }
+    updatePlantillas([...plantillas, clon])
+    return clon
+  }, [plantillas, updatePlantillas])
+
   return (
     <Ctx.Provider value={{
       programas, crearPrograma, editarPrograma, borrarPrograma, añadirSemana, borrarSemana,
-      añadirAdjunto, borrarAdjunto,
+      añadirAdjunto, borrarAdjunto, clonarPrograma,
       añadirBloqueAlDia, editarBloqueDelDia, borrarBloqueDelDia,
-      plantillas, crearPlantilla, editarPlantilla, borrarPlantilla,
+      plantillas, crearPlantilla, editarPlantilla, borrarPlantilla, clonarPlantilla,
     }}>
       {children}
     </Ctx.Provider>

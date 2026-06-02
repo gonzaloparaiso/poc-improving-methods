@@ -4,14 +4,17 @@ import { EJERCICIOS } from '../../data/ejercicios'
 import { type Bloque } from '../../types'
 import BloqueModal from '../../components/planificacion/BloqueModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import PromptDialog from '../../components/PromptDialog'
 import { usePermisos } from '../../hooks/usePermisos'
 
-function BloqueCard({ bloque, onEditar, onBorrar, puedeEditar, puedeBorrar }: {
+function BloqueCard({ bloque, onEditar, onBorrar, onClonar, puedeEditar, puedeBorrar, puedeClonar }: {
   bloque: Bloque
   onEditar: () => void
   onBorrar: () => void
+  onClonar: () => void
   puedeEditar: boolean
   puedeBorrar: boolean
+  puedeClonar: boolean
 }) {
   const [expandido, setExpandido] = useState(false)
 
@@ -52,6 +55,14 @@ function BloqueCard({ bloque, onEditar, onBorrar, puedeEditar, puedeBorrar }: {
               </svg>
             </button>
           )}
+          {puedeClonar && (
+            <button onClick={onClonar} className="p-2 text-tn-muted hover:text-tn-yellow rounded-lg hover:bg-tn-yellow/5 transition-all" title="Clonar plantilla">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          )}
           {puedeBorrar && (
             <button onClick={onBorrar} className="p-2 text-tn-muted hover:text-red-400 rounded-lg hover:bg-red-400/5 transition-all" title="Eliminar">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,11 +97,12 @@ function BloqueCard({ bloque, onEditar, onBorrar, puedeEditar, puedeBorrar }: {
 }
 
 export default function BloquesList() {
-  const { plantillas, crearPlantilla, editarPlantilla, borrarPlantilla } = usePlanificacion()
+  const { plantillas, crearPlantilla, editarPlantilla, borrarPlantilla, clonarPlantilla } = usePlanificacion()
   const { puede } = usePermisos()
   const [modalOpen, setModalOpen]   = useState(false)
   const [editando, setEditando]     = useState<Bloque | null>(null)
   const [borrando, setBorrando]     = useState<Bloque | null>(null)
+  const [clonando, setClonando]     = useState<Bloque | null>(null)
 
   return (
     <div className="space-y-5">
@@ -141,8 +153,10 @@ export default function BloquesList() {
               bloque={p}
               onEditar={() => { setEditando(p); setModalOpen(true) }}
               onBorrar={() => setBorrando(p)}
+              onClonar={() => setClonando(p)}
               puedeEditar={puede('planificaciones', 'editar')}
               puedeBorrar={puede('planificaciones', 'borrar')}
+              puedeClonar={puede('planificaciones', 'crear')}
             />
           ))}
         </div>
@@ -169,6 +183,21 @@ export default function BloquesList() {
           confirmLabel="Eliminar"
           onConfirm={() => { borrarPlantilla(borrando.id); setBorrando(null) }}
           onCancel={() => setBorrando(null)}
+        />
+      )}
+
+      {clonando && (
+        <PromptDialog
+          title="Clonar plantilla"
+          description="Se copiarán todos los ejercicios e información del bloque."
+          label="Nombre de la nueva plantilla"
+          defaultValue={`${clonando.nombre} (copia)`}
+          confirmLabel="Clonar"
+          onConfirm={nombre => {
+            clonarPlantilla(clonando.id, nombre)
+            setClonando(null)
+          }}
+          onCancel={() => setClonando(null)}
         />
       )}
     </div>
