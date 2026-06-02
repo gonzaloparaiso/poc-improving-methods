@@ -5,13 +5,15 @@ import { PlanificacionProvider } from './context/PlanificacionContext'
 import { ClientesProvider } from './context/ClientesContext'
 import { CalendariosProvider } from './context/CalendariosContext'
 import { usePermisos } from './hooks/usePermisos'
-import { type Seccion } from './types'
+import { type Seccion, type Cliente } from './types'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import Administracion from './pages/Administracion'
 import Clientes from './pages/Clientes'
 import Suscripciones from './pages/Suscripciones'
 import Planificacion from './pages/Planificacion'
+import ClienteLogin from './pages/portal/ClienteLogin'
+import PortalCliente from './pages/portal/PortalCliente'
 
 export interface User {
   username: string
@@ -32,20 +34,35 @@ function HomeRedirect() {
   return <Navigate to={esAdmin ? '/administracion' : '/clientes'} replace />
 }
 
+const STORAGE_CLIENTE = 'im_cliente_sesion'
+
 function App() {
   const [user, setUser] = useState<User | null>(() => {
     const saved = sessionStorage.getItem('im_user')
     return saved ? JSON.parse(saved) : null
   })
 
-  const login = (u: User) => {
+  const [cliente, setCliente] = useState<Cliente | null>(() => {
+    const saved = sessionStorage.getItem(STORAGE_CLIENTE)
+    return saved ? JSON.parse(saved) : null
+  })
+
+  const loginStaff = (u: User) => {
     sessionStorage.setItem('im_user', JSON.stringify(u))
     setUser(u)
   }
-
-  const logout = () => {
+  const logoutStaff = () => {
     sessionStorage.removeItem('im_user')
     setUser(null)
+  }
+
+  const loginCliente = (c: Cliente) => {
+    sessionStorage.setItem(STORAGE_CLIENTE, JSON.stringify(c))
+    setCliente(c)
+  }
+  const logoutCliente = () => {
+    sessionStorage.removeItem(STORAGE_CLIENTE)
+    setCliente(null)
   }
 
   return (
@@ -55,15 +72,30 @@ function App() {
       <PlanificacionProvider>
         <BrowserRouter>
           <Routes>
+            {/* Portal cliente */}
+            <Route
+              path="/portal/login"
+              element={cliente ? <Navigate to="/portal" replace /> : <ClienteLogin onLogin={loginCliente} />}
+            />
+            <Route
+              path="/portal"
+              element={
+                cliente
+                  ? <PortalCliente cliente={cliente} onLogout={logoutCliente} />
+                  : <Navigate to="/portal/login" replace />
+              }
+            />
+
+            {/* Staff */}
             <Route
               path="/login"
-              element={user ? <Navigate to="/" replace /> : <Login onLogin={login} />}
+              element={user ? <Navigate to="/" replace /> : <Login onLogin={loginStaff} />}
             />
             <Route
               path="/*"
               element={
                 user ? (
-                  <Layout user={user} onLogout={logout}>
+                  <Layout user={user} onLogout={logoutStaff}>
                     <Routes>
                       <Route path="/" element={<HomeRedirect />} />
                       <Route path="/administracion" element={
