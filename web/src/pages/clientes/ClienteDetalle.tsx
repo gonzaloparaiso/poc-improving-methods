@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { type Cliente, type CalendarioCliente } from '../../types'
+import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion } from '../../types'
 import { useClientes } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
-import { useCalendarios, fmtFecha } from '../../context/CalendariosContext'
+import { useCalendarios, fmtFecha, siguienteLunes } from '../../context/CalendariosContext'
 import ClienteModal from '../../components/clientes/ClienteModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import CalendarioClienteView from './CalendarioClienteView'
+import LunesPicker, { getLunes } from '../../components/LunesPicker'
 
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
@@ -35,6 +36,10 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   const [calendarioAbierto, setCalendarioAbierto] = useState<CalendarioCliente | null>(null)
   const [borrarCal, setBorrarCal]         = useState<CalendarioCliente | null>(null)
 
+  // Para recurrentes: paso intermedio de elección de fecha
+  const [catPendiente, setCatPendiente]   = useState<CatalogoSuscripcion | null>(null)
+  const [fechaPendiente, setFechaPendiente] = useState('')
+
   const missSuscs = suscripciones.filter(s => s.clienteId === clienteActual.id)
   const missSuscsActivas = missSuscs.filter(s => s.activa)
   const misCalendarios = calendariosDeCliente(clienteActual.id)
@@ -44,13 +49,48 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     cat => !missSuscsActivas.some(s => s.catalogoId === cat.id),
   )
 
-  // Al asignar una suscripción de pago único con programa → crear calendario
-  const handleAsignar = (catalogoId: string, suscripcionClienteId: string) => {
+  /** Crear calendario para pago único (llamado tras asignar la suscripción) */
+  const handleAsignar = (catalogoId: string, suscripcionClienteId: string, fechaInicio?: string) => {
     const cat = catalogo.find(c => c.id === catalogoId)
-    if (cat?.tipo === 'unico' && cat.programaId) {
-      const programa = programas.find(p => p.id === cat.programaId)
-      if (programa) crearCalendario(clienteActual.id, suscripcionClienteId, programa)
+    if (!cat?.programaId) return
+    const programa = programas.find(p => p.id === cat.programaId)
+    if (!programa) return
+    const fecha = fechaInicio ?? siguienteLunes()
+    crearCalendario(clienteActual.id, suscripcionClienteId, programa, fecha)
+  }
+
+  /** Al pulsar una suscripción recurrente con programa: pedir fecha antes de asignar */
+  const seleccionarCatalogo = (cat: CatalogoSuscripcion) => {
+    if (cat.tipo === 'recurrente' && cat.programaId) {
+      // Pre-rellenar con la fecha del catálogo o el siguiente lunes
+      setCatPendiente(cat)
+      setFechaPendiente(cat.fechaInicioPrograma ?? siguienteLunes())
+      setAsignarModal(false)
+    } else {
+      // Pago único: asignar directamente y crear calendario si tiene programa
+      asignarSuscripcion(clienteActual.id, cat.id)
+      setTimeout(() => {
+        const sc = [...(JSON.parse(localStorage.getItem('im_suscripciones_clientes') ?? '[]') as {id:string;clienteId:string;catalogoId:string;activa:boolean}[])]
+          .filter(s => s.clienteId === clienteActual.id && s.catalogoId === cat.id && s.activa)
+          .at(-1)
+        if (sc) handleAsignar(cat.id, sc.id)
+      }, 0)
+      setAsignarModal(false)
     }
+  }
+
+  /** Confirmar la fecha para recurrente */
+  const confirmarRecurrente = () => {
+    if (!catPendiente) return
+    const fecha = getLunes(fechaPendiente)
+    asignarSuscripcion(clienteActual.id, catPendiente.id)
+    setTimeout(() => {
+      const sc = [...(JSON.parse(localStorage.getItem('im_suscripciones_clientes') ?? '[]') as {id:string;clienteId:string;catalogoId:string;activa:boolean}[])]
+        .filter(s => s.clienteId === clienteActual.id && s.catalogoId === catPendiente.id && s.activa)
+        .at(-1)
+      if (sc) handleAsignar(catPendiente.id, sc.id, fecha)
+    }, 0)
+    setCatPendiente(null)
   }
 
   // Vista de calendario
@@ -279,19 +319,7 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                   return (
                     <button
                       key={cat.id}
-                      onClick={() => {
-                        // Crear la suscripción y obtener su id para el calendario
-                        asignarSuscripcion(clienteActual.id, cat.id)
-                        // Pequeño timeout para que el estado de suscripciones se actualice
-                        setTimeout(() => {
-                          // Buscar la suscripción recién creada (la última del cliente para este catálogo)
-                          const sc = [...(JSON.parse(localStorage.getItem('im_suscripciones_clientes') ?? '[]') as {id:string;clienteId:string;catalogoId:string;activa:boolean}[])]
-                            .filter(s => s.clienteId === clienteActual.id && s.catalogoId === cat.id && s.activa)
-                            .at(-1)
-                          if (sc) handleAsignar(cat.id, sc.id)
-                        }, 0)
-                        setAsignarModal(false)
-                      }}
+                      onClick={() => seleccionarCatalogo(cat)}
                       className="w-full card px-4 py-4 text-left hover:border-tn-yellow transition-all group"
                     >
                       <div className="flex items-start gap-3">
@@ -389,6 +417,44 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: elegir lunes para suscripción recurrente ─────────────── */}
+      {catPendiente && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-sm p-6 space-y-5 shadow-2xl">
+            <div>
+              <h3 className="text-white font-bold text-lg">Fecha de inicio</h3>
+              <p className="text-tn-muted text-sm mt-0.5">
+                Suscripción: <span className="text-white font-medium">{catPendiente.nombre}</span>
+              </p>
+            </div>
+
+            <LunesPicker
+              value={fechaPendiente}
+              onChange={setFechaPendiente}
+              label="Lunes de inicio *"
+              hint="El programa comenzará en este lunes para este cliente"
+            />
+
+            <div className="bg-tn-yellow/5 border border-tn-yellow/20 rounded-xl p-3">
+              <p className="text-tn-yellow/80 text-xs">
+                El calendario personal del cliente se generará automáticamente a partir de este lunes.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button className="btn-secondary flex-1" onClick={() => setCatPendiente(null)}>Cancelar</button>
+              <button
+                className="btn-primary flex-1"
+                disabled={!fechaPendiente}
+                onClick={confirmarRecurrente}
+              >
+                Asignar y crear calendario
+              </button>
+            </div>
           </div>
         </div>
       )}

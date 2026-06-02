@@ -75,8 +75,10 @@ export type TipoSuscripcion = 'unico' | 'recurrente'
 export interface CatalogoSuscripcion {
   id: string
   nombre: string
-  programaId: string | null     // ref a Programa (puede no tener programa aún)
+  programaId: string | null
   tipo: TipoSuscripcion
+  /** Solo para recurrentes: lunes desde el que arranca el programa */
+  fechaInicioPrograma: string | null
   creadoEn: string
 }
 

@@ -26,8 +26,8 @@ interface ClientesContextValue {
 
   // Catálogo de suscripciones
   catalogo: CatalogoSuscripcion[]
-  crearCatalogo: (data: { nombre: string; programaId: string | null; tipo: TipoSuscripcion }) => void
-  editarCatalogo: (id: string, data: Partial<{ nombre: string; programaId: string | null; tipo: TipoSuscripcion }>) => void
+  crearCatalogo: (data: { nombre: string; programaId: string | null; tipo: TipoSuscripcion; fechaInicioPrograma?: string | null }) => CatalogoSuscripcion
+  editarCatalogo: (id: string, data: Partial<{ nombre: string; programaId: string | null; tipo: TipoSuscripcion; fechaInicioPrograma: string | null }>) => void
   borrarCatalogo: (id: string) => void
 
   // Suscripciones de clientes
@@ -79,12 +79,13 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
   }, [clientes, editarCliente])
 
   // ── Catálogo ──
-  const crearCatalogo = useCallback((data: { nombre: string; programaId: string | null; tipo: TipoSuscripcion }) => {
-    const nueva: CatalogoSuscripcion = { ...data, id: genId(), creadoEn: new Date().toISOString() }
+  const crearCatalogo = useCallback((data: { nombre: string; programaId: string | null; tipo: TipoSuscripcion; fechaInicioPrograma?: string | null }) => {
+    const nueva: CatalogoSuscripcion = { ...data, fechaInicioPrograma: data.fechaInicioPrograma ?? null, id: genId(), creadoEn: new Date().toISOString() }
     updCatalogo([...catalogo, nueva])
+    return nueva
   }, [catalogo, updCatalogo])
 
-  const editarCatalogo = useCallback((id: string, data: Partial<{ nombre: string; programaId: string | null; tipo: TipoSuscripcion }>) => {
+  const editarCatalogo = useCallback((id: string, data: Partial<{ nombre: string; programaId: string | null; tipo: TipoSuscripcion; fechaInicioPrograma: string | null }>) => {
     updCatalogo(catalogo.map(c => c.id === id ? { ...c, ...data } : c))
   }, [catalogo, updCatalogo])
 

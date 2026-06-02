@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useClientes } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
+import { useCalendarios } from '../../context/CalendariosContext'
 import { type CatalogoSuscripcion } from '../../types'
 import SuscripcionCatalogoModal from '../../components/clientes/SuscripcionCatalogoModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -14,9 +15,38 @@ function TipoBadge({ tipo }: { tipo: 'unico' | 'recurrente' }) {
 export default function SuscripcionesCatalogo() {
   const { catalogo, borrarCatalogo, suscripciones } = useClientes()
   const { programas } = usePlanificacion()
+  const { crearCalendario, calendarios } = useCalendarios()
   const [modalOpen, setModalOpen] = useState(false)
   const [editando, setEditando]   = useState<CatalogoSuscripcion | null>(null)
   const [borrando, setBorrando]   = useState<CatalogoSuscripcion | null>(null)
+
+  /** Tras guardar un catálogo recurrente+programa, crea calendarios a los clientes activos que no tienen uno */
+  const crearCalendariosParaClientesActivos = useCallback((catalogoId: string, fechaInicio: string) => {
+    const cat = catalogo.find(c => c.id === catalogoId)
+    if (!cat?.programaId) return
+    const programa = programas.find(p => p.id === cat.programaId)
+    if (!programa) return
+
+    // Clientes activos con esta suscripción
+    const suscsActivas = suscripciones.filter(s => s.catalogoId === catalogoId && s.activa)
+    suscsActivas.forEach(s => {
+      // Solo crear si no tiene ya un calendario para esta suscripción
+      const yaExiste = calendarios.some(c => c.suscripcionClienteId === s.id)
+      if (!yaExiste) {
+        crearCalendario(s.clienteId, s.id, programa, fechaInicio)
+      }
+    })
+  }, [catalogo, programas, suscripciones, calendarios, crearCalendario])
+
+  const handleSaved = useCallback((catalogoId: string, fechaInicio: string | null) => {
+    if (!fechaInicio) return
+    // Si es edición, usamos el catalogoId directamente
+    // Si es nuevo (__nuevo__), buscamos el último del catálogo
+    const id = catalogoId === '__nuevo__'
+      ? [...catalogo].sort((a, b) => b.creadoEn.localeCompare(a.creadoEn))[0]?.id ?? ''
+      : catalogoId
+    if (id) crearCalendariosParaClientesActivos(id, fechaInicio)
+  }, [catalogo, crearCalendariosParaClientesActivos])
 
   return (
     <div className="space-y-5">
@@ -120,6 +150,7 @@ export default function SuscripcionesCatalogo() {
       {modalOpen && (
         <SuscripcionCatalogoModal
           item={editando}
+          onSaved={handleSaved}
           onClose={() => { setModalOpen(false); setEditando(null) }}
         />
       )}
