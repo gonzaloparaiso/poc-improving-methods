@@ -29,10 +29,9 @@ function Guard({ seccion, children }: { seccion: Seccion; children: ReactNode })
   return <>{children}</>
 }
 
-/** Ruta raíz: admin → administracion, resto → clientes */
+/** Ruta raíz: todos los roles entran directamente a Clientes */
 function HomeRedirect() {
-  const { esAdmin } = usePermisos()
-  return <Navigate to={esAdmin ? '/administracion' : '/clientes'} replace />
+  return <Navigate to="/clientes" replace />
 }
 
 const STORAGE_CLIENTE = 'im_cliente_sesion'
