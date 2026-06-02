@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { type Cliente } from '../../types'
+import { type Cliente, type CalendarioCliente } from '../../types'
 import { useClientes } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
+import { useCalendarios, fmtFecha } from '../../context/CalendariosContext'
 import ClienteModal from '../../components/clientes/ClienteModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import CalendarioClienteView from './CalendarioClienteView'
 
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
@@ -22,21 +24,44 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     clientes,
   } = useClientes()
   const { programas } = usePlanificacion()
+  const { crearCalendario, calendariosDeCliente, borrarCalendario } = useCalendarios()
 
   // Refresco del cliente desde el store (puede haber sido editado)
   const clienteActual = clientes.find(c => c.id === cliente.id) ?? cliente
 
-  const [editModal, setEditModal]       = useState(false)
-  const [asignarModal, setAsignarModal] = useState(false)
-  const [quitarSusc, setQuitarSusc]     = useState<string | null>(null) // id suscripcionCliente
+  const [editModal, setEditModal]         = useState(false)
+  const [asignarModal, setAsignarModal]   = useState(false)
+  const [quitarSusc, setQuitarSusc]       = useState<string | null>(null)
+  const [calendarioAbierto, setCalendarioAbierto] = useState<CalendarioCliente | null>(null)
+  const [borrarCal, setBorrarCal]         = useState<CalendarioCliente | null>(null)
 
   const missSuscs = suscripciones.filter(s => s.clienteId === clienteActual.id)
   const missSuscsActivas = missSuscs.filter(s => s.activa)
+  const misCalendarios = calendariosDeCliente(clienteActual.id)
 
   // Catálogo que aún no tiene asignado (activo) este cliente
   const catalogoDisponible = catalogo.filter(
     cat => !missSuscsActivas.some(s => s.catalogoId === cat.id),
   )
+
+  // Al asignar una suscripción de pago único con programa → crear calendario
+  const handleAsignar = (catalogoId: string, suscripcionClienteId: string) => {
+    const cat = catalogo.find(c => c.id === catalogoId)
+    if (cat?.tipo === 'unico' && cat.programaId) {
+      const programa = programas.find(p => p.id === cat.programaId)
+      if (programa) crearCalendario(clienteActual.id, suscripcionClienteId, programa)
+    }
+  }
+
+  // Vista de calendario
+  if (calendarioAbierto) {
+    return (
+      <CalendarioClienteView
+        calendario={calendarioAbierto}
+        onVolver={() => setCalendarioAbierto(null)}
+      />
+    )
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -255,7 +280,16 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                     <button
                       key={cat.id}
                       onClick={() => {
+                        // Crear la suscripción y obtener su id para el calendario
                         asignarSuscripcion(clienteActual.id, cat.id)
+                        // Pequeño timeout para que el estado de suscripciones se actualice
+                        setTimeout(() => {
+                          // Buscar la suscripción recién creada (la última del cliente para este catálogo)
+                          const sc = [...(JSON.parse(localStorage.getItem('im_suscripciones_clientes') ?? '[]') as {id:string;clienteId:string;catalogoId:string;activa:boolean}[])]
+                            .filter(s => s.clienteId === clienteActual.id && s.catalogoId === cat.id && s.activa)
+                            .at(-1)
+                          if (sc) handleAsignar(cat.id, sc.id)
+                        }, 0)
                         setAsignarModal(false)
                       }}
                       className="w-full card px-4 py-4 text-left hover:border-tn-yellow transition-all group"
@@ -304,6 +338,70 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Calendarios ─────────────────────────────────────────────────── */}
+      {misCalendarios.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-white font-bold flex items-center gap-2">
+            <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Calendarios
+          </h3>
+          <div className="space-y-2">
+            {misCalendarios.map(cal => (
+              <div key={cal.id} className="card p-4 flex items-center justify-between gap-4 hover:border-tn-yellow/40 transition-all group">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-lg bg-tn-yellow/10 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white font-semibold text-sm truncate">{cal.programaNombre}</p>
+                    <p className="text-tn-muted text-xs">
+                      Desde {fmtFecha(cal.fechaInicio)} · {cal.semanas.length} semanas
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => setCalendarioAbierto(cal)}
+                    className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    Ver
+                  </button>
+                  <button
+                    onClick={() => setBorrarCal(cal)}
+                    className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                    title="Eliminar calendario"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirm borrar calendario ────────────────────────────────────── */}
+      {borrarCal && (
+        <ConfirmDialog
+          title="Eliminar calendario"
+          description={`¿Eliminar el calendario "${borrarCal.programaNombre}"? Se perderán todos los entrenamientos personalizados.`}
+          confirmLabel="Eliminar"
+          onConfirm={() => { borrarCalendario(borrarCal.id); setBorrarCal(null) }}
+          onCancel={() => setBorrarCal(null)}
+        />
       )}
 
       {/* ── Confirm desactivar suscripción ───────────────────────────────── */}

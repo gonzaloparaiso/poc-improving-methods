@@ -88,6 +88,31 @@ export interface SuscripcionCliente {
   activa: boolean
 }
 
+// ─── Calendario personal de cliente ──────────────────────────────────────────
+export interface DiaCalendario {
+  fecha: string        // "2025-06-02"
+  diaSemana: number    // 0=Lun … 6=Dom
+  bloques: Bloque[]    // copia editable del programa original
+}
+
+export interface SemanaCalendario {
+  id: string
+  numero: number
+  fechaLunes: string   // "2025-06-02"
+  dias: DiaCalendario[]  // siempre 7
+}
+
+export interface CalendarioCliente {
+  id: string
+  clienteId: string
+  suscripcionClienteId: string
+  programaId: string
+  programaNombre: string
+  fechaInicio: string  // lunes de inicio
+  semanas: SemanaCalendario[]
+  creadoEn: string
+}
+
 // ─── Planificación ────────────────────────────────────────────────────────────
 export const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'] as const
 export type DiaSemana = typeof DIAS_SEMANA[number]

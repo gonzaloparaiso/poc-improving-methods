@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { UsersProvider } from './context/UsersContext'
 import { PlanificacionProvider } from './context/PlanificacionContext'
 import { ClientesProvider } from './context/ClientesContext'
+import { CalendariosProvider } from './context/CalendariosContext'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import Administracion from './pages/Administracion'
@@ -34,6 +35,7 @@ function App() {
   return (
     <UsersProvider>
       <ClientesProvider>
+      <CalendariosProvider>
       <PlanificacionProvider>
         <BrowserRouter>
           <Routes>
@@ -61,6 +63,7 @@ function App() {
           </Routes>
         </BrowserRouter>
       </PlanificacionProvider>
+      </CalendariosProvider>
       </ClientesProvider>
     </UsersProvider>
   )
