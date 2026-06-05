@@ -82,12 +82,21 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
   const { suscripciones, catalogo } = useClientes()
   const todosCalendarios = calendariosDeCliente(cliente.id)
 
-  // Programas a los que el cliente tiene acceso HOY: los que vienen de una
-  // suscripción suya vigente (hoy dentro de [inicio, fin] y activa).
+  // ¿Una suscripción concede acceso a sus programas HOY?
+  //  - Pago único: SIEMPRE (no caduca; se ve en la fecha en que se asignó)
+  //  - Recurrente: solo si hoy está dentro de [inicio, fin] y activa
+  const suscConcedeAcceso = (s: typeof suscripciones[number]): boolean => {
+    const cat = catalogo.find(c => c.id === s.catalogoId)
+    if (!cat) return false
+    if (cat.tipo === 'unico') return s.activa
+    return suscripcionVigente(s)
+  }
+
+  // Programas a los que el cliente tiene acceso HOY
   const programasVigentes = (() => {
     const ids = new Set<string>()
     suscripciones
-      .filter(s => s.clienteId === cliente.id && suscripcionVigente(s))
+      .filter(s => s.clienteId === cliente.id && suscConcedeAcceso(s))
       .forEach(s => {
         const cat = catalogo.find(c => c.id === s.catalogoId)
         cat?.programas.forEach(pa => ids.add(pa.programaId))
@@ -95,15 +104,15 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
     return ids
   })()
 
-  // Un calendario es visible si su programa está cubierto por una suscripción vigente
+  // Un calendario es visible si su programa está cubierto por una suscripción con acceso
   const calVigente = (c: CalendarioCliente) => programasVigentes.has(c.programaId)
 
   const miscalendarios = todosCalendarios.filter(calVigente)
   const calendariosBloqueados = todosCalendarios.filter(c => !calVigente(c))
 
-  // Suscripciones vigentes del cliente con su info de catálogo (nombre, precio)
+  // Suscripciones del cliente que conceden acceso (recurrentes vigentes + pago único)
   const misSuscripcionesVigentes = suscripciones
-    .filter(s => s.clienteId === cliente.id && suscripcionVigente(s))
+    .filter(s => s.clienteId === cliente.id && suscConcedeAcceso(s))
     .map(s => ({ susc: s, cat: catalogo.find(c => c.id === s.catalogoId) }))
     .filter(x => x.cat)
 
@@ -262,12 +271,12 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                   Tu suscripción no está vigente ahora mismo. Renuévala para volver a ver tu planificación.
                 </p>
 
-                {/* Suscripciones caducadas del cliente */}
+                {/* Suscripciones recurrentes caducadas del cliente */}
                 <div className="space-y-3 text-left">
                   {suscripciones
                     .filter(x => x.clienteId === cliente.id)
                     .map(x => ({ susc: x, cat: catalogo.find(c => c.id === x.catalogoId) }))
-                    .filter(x => x.cat)
+                    .filter(x => x.cat && x.cat.tipo === 'recurrente')
                     .map(({ susc, cat }) => (
                       <div key={susc.id} className="bg-tn-dark border border-tn-border rounded-xl p-4 space-y-3">
                         <div className="flex items-center justify-between gap-2">
@@ -397,35 +406,52 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
         {/* Suscripciones del cliente */}
         {misSuscripcionesVigentes.length > 0 && (
           <div className="space-y-2">
-            {misSuscripcionesVigentes.map(({ susc, cat }) => (
-              <div key={susc.id} className="card p-4 flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-tn-yellow/10 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-                    </svg>
+            {misSuscripcionesVigentes.map(({ susc, cat }) => {
+              const esUnico = cat!.tipo === 'unico'
+              return (
+                <div key={susc.id} className="card p-4 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${esUnico ? 'bg-green-400/10' : 'bg-tn-yellow/10'}`}>
+                      <svg className={`w-5 h-5 ${esUnico ? 'text-green-400' : 'text-tn-yellow'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-white font-bold text-sm truncate">{cat!.nombre}</p>
+                      <p className="text-tn-muted text-xs">
+                        {esUnico
+                          ? `Acceso permanente${cat!.precioMensual ? ` · ${cat!.precioMensual} €` : ''}`
+                          : `Activa hasta ${fmtFecha(susc.fechaFin)}${cat!.precioMensual ? ` · ${cat!.precioMensual} €/mes` : ''}`}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-white font-bold text-sm truncate">{cat!.nombre}</p>
-                    <p className="text-tn-muted text-xs">
-                      Activa hasta {fmtFecha(susc.fechaFin)}
-                      {cat!.precioMensual ? ` · ${cat!.precioMensual} €/mes` : ''}
-                    </p>
-                  </div>
+                  {esUnico ? (
+                    <button
+                      type="button"
+                      className="btn-secondary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                      </svg>
+                      Ver todos los programas armour
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-primary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Renovar ahora{cat!.precioMensual ? ` por ${cat!.precioMensual} €` : ''}
+                    </button>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  className="btn-primary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Renovar ahora{cat!.precioMensual ? ` por ${cat!.precioMensual} €` : ''}
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
