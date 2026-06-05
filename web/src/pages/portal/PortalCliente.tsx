@@ -79,18 +79,27 @@ type Vista = 'semana' | 'todas' | 'dia'
 export default function PortalCliente({ cliente, onLogout }: Props) {
   const { calendariosDeCliente } = useCalendarios()
   const { ejercicios } = useEjercicios()
-  const { suscripciones } = useClientes()
+  const { suscripciones, catalogo } = useClientes()
   const todosCalendarios = calendariosDeCliente(cliente.id)
 
-  // Un calendario es accesible si su suscripción está vigente HOY
-  const suscVigente = (suscClienteId: string) => {
-    const s = suscripciones.find(x => x.id === suscClienteId)
-    return s ? suscripcionVigente(s) : false
-  }
+  // Programas a los que el cliente tiene acceso HOY: los que vienen de una
+  // suscripción suya vigente (hoy dentro de [inicio, fin] y activa).
+  const programasVigentes = (() => {
+    const ids = new Set<string>()
+    suscripciones
+      .filter(s => s.clienteId === cliente.id && suscripcionVigente(s))
+      .forEach(s => {
+        const cat = catalogo.find(c => c.id === s.catalogoId)
+        cat?.programas.forEach(pa => ids.add(pa.programaId))
+      })
+    return ids
+  })()
 
-  // Solo los calendarios con suscripción vigente son visibles/seleccionables
-  const miscalendarios = todosCalendarios.filter(c => suscVigente(c.suscripcionClienteId))
-  const calendariosBloqueados = todosCalendarios.filter(c => !suscVigente(c.suscripcionClienteId))
+  // Un calendario es visible si su programa está cubierto por una suscripción vigente
+  const calVigente = (c: CalendarioCliente) => programasVigentes.has(c.programaId)
+
+  const miscalendarios = todosCalendarios.filter(calVigente)
+  const calendariosBloqueados = todosCalendarios.filter(c => !calVigente(c))
 
   // Selección de calendarios — por defecto todos los vigentes seleccionados
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
@@ -248,7 +257,13 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                 </p>
                 <div className="bg-tn-dark border border-tn-border rounded-xl p-4 text-left space-y-2">
                   {calendariosBloqueados.map(cal => {
-                    const s = suscripciones.find(x => x.id === cal.suscripcionClienteId)
+                    // Buscar la suscripción del cliente cuyo catálogo incluye este programa
+                    const s = suscripciones
+                      .filter(x => x.clienteId === cliente.id)
+                      .find(x => {
+                        const cat = catalogo.find(c => c.id === x.catalogoId)
+                        return cat?.programas.some(pa => pa.programaId === cal.programaId)
+                      })
                     return (
                       <div key={cal.id} className="flex items-center justify-between gap-2">
                         <span className="text-white text-sm font-medium truncate">{cal.programaNombre}</span>
