@@ -257,30 +257,41 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                       d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
                 </div>
-                <h2 className="text-white font-bold text-xl mb-2">Suscripción fuera de fecha</h2>
-                <p className="text-tn-muted text-sm mb-4">
-                  Tu suscripción no está vigente ahora mismo, así que tu planificación no está disponible.
+                <h2 className="text-white font-bold text-xl mb-2">Suscripción caducada</h2>
+                <p className="text-tn-muted text-sm mb-5">
+                  Tu suscripción no está vigente ahora mismo. Renuévala para volver a ver tu planificación.
                 </p>
-                <div className="bg-tn-dark border border-tn-border rounded-xl p-4 text-left space-y-2">
-                  {calendariosBloqueados.map(cal => {
-                    // Buscar la suscripción del cliente cuyo catálogo incluye este programa
-                    const s = suscripciones
-                      .filter(x => x.clienteId === cliente.id)
-                      .find(x => {
-                        const cat = catalogo.find(c => c.id === x.catalogoId)
-                        return cat?.programas.some(pa => pa.programaId === cal.programaId)
-                      })
-                    return (
-                      <div key={cal.id} className="flex items-center justify-between gap-2">
-                        <span className="text-white text-sm font-medium truncate">{cal.programaNombre}</span>
-                        {s && <span className="text-red-400/80 text-xs whitespace-nowrap">hasta {fmtFecha(s.fechaFin)}</span>}
+
+                {/* Suscripciones caducadas del cliente */}
+                <div className="space-y-3 text-left">
+                  {suscripciones
+                    .filter(x => x.clienteId === cliente.id)
+                    .map(x => ({ susc: x, cat: catalogo.find(c => c.id === x.catalogoId) }))
+                    .filter(x => x.cat)
+                    .map(({ susc, cat }) => (
+                      <div key={susc.id} className="bg-tn-dark border border-tn-border rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-white font-bold text-sm truncate">{cat!.nombre}</p>
+                            <p className="text-red-400/80 text-xs">Caducó el {fmtFecha(susc.fechaFin)}</p>
+                          </div>
+                          {cat!.precioMensual ? (
+                            <span className="text-white font-bold text-sm whitespace-nowrap">{cat!.precioMensual} €/mes</span>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-primary w-full flex items-center justify-center gap-2 text-sm py-2.5"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Renovar ahora{cat!.precioMensual ? ` por ${cat!.precioMensual} €` : ''}
+                        </button>
                       </div>
-                    )
-                  })}
+                    ))}
                 </div>
-                <p className="text-tn-muted text-xs mt-4">
-                  Contacta con tu entrenador para renovarla.
-                </p>
               </>
             ) : (
               <>
