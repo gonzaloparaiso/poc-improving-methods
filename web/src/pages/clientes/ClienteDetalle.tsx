@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion, CALENDAR_COLORS } from '../../types'
-import { useClientes } from '../../context/ClientesContext'
+import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion, type SuscripcionCliente, CALENDAR_COLORS } from '../../types'
+import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
 import { useCalendarios, fmtFecha, siguienteLunes } from '../../context/CalendariosContext'
+import { usePermisos } from '../../hooks/usePermisos'
 import ClienteModal from '../../components/clientes/ClienteModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import CalendarioClienteView from './CalendarioClienteView'
@@ -22,11 +23,12 @@ interface Props {
 export default function ClienteDetalle({ cliente, onVolver }: Props) {
   const {
     catalogo, suscripciones,
-    asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion,
+    asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion, editarFechaFin,
     clientes,
   } = useClientes()
   const { programas } = usePlanificacion()
   const { crearCalendario, calendariosDeCliente, borrarCalendario } = useCalendarios()
+  const { esAdmin } = usePermisos()
 
   // Refresco del cliente desde el store (puede haber sido editado)
   const clienteActual = clientes.find(c => c.id === cliente.id) ?? cliente
@@ -42,6 +44,10 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   // Para recurrentes: paso intermedio de elección de fecha
   const [catPendiente, setCatPendiente]   = useState<CatalogoSuscripcion | null>(null)
   const [fechaPendiente, setFechaPendiente] = useState('')
+
+  // Editar fecha fin de una suscripción (solo admin)
+  const [editFin, setEditFin]             = useState<SuscripcionCliente | null>(null)
+  const [nuevaFin, setNuevaFin]           = useState('')
 
   const missSuscs = suscripciones.filter(s => s.clienteId === clienteActual.id)
   const missSuscsActivas = missSuscs.filter(s => s.activa)
@@ -260,8 +266,11 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
           <div className="space-y-2">
             {missSuscs.map(s => {
               const cat = catalogo.find(c => c.id === s.catalogoId)
+              const vigente = suscripcionVigente(s)
               return (
-                <div key={s.id} className={`card p-4 flex items-center gap-4 ${!s.activa ? 'opacity-50' : ''}`}>
+                <div key={s.id} className={`card p-4 flex items-center gap-4 transition-all ${
+                  vigente ? '' : 'opacity-70 border-red-400/30 bg-red-400/[0.03]'
+                }`}>
                   {/* Icono tipo */}
                   <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
                     cat?.tipo === 'recurrente' ? 'bg-blue-400/10' : 'bg-green-400/10'
@@ -281,16 +290,19 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-white font-semibold text-sm">{cat?.nombre ?? '—'}</p>
-                      {s.activa
-                        ? <span className="badge-active text-xs"><span className="w-1.5 h-1.5 rounded-full bg-green-400" />Activa</span>
-                        : <span className="badge-inactive text-xs"><span className="w-1.5 h-1.5 rounded-full bg-tn-muted" />Inactiva</span>}
+                      {vigente
+                        ? <span className="badge-active text-xs"><span className="w-1.5 h-1.5 rounded-full bg-green-400" />Vigente</span>
+                        : <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-400/10 text-red-400 inline-flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                            {s.activa ? 'Fuera de fecha' : 'Desactivada'}
+                          </span>}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                       {cat?.programas.map(pa => {
                         const pr = programas.find(p => p.id === pa.programaId)
                         return pr ? <span key={pa.programaId} className="text-tn-muted text-xs">📋 {pr.nombre}</span> : null
                       })}
-                      <span className="text-tn-muted text-xs">
+                      <span className={`text-xs ${vigente ? 'text-tn-muted' : 'text-red-400/80'}`}>
                         {fmtDate(s.fechaInicio)} → {fmtDate(s.fechaFin)}
                       </span>
                       {cat?.precioMensual ? (
@@ -306,6 +318,17 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
 
                   {/* Acciones */}
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    {esAdmin && (
+                      <button
+                        onClick={() => { setEditFin(s); setNuevaFin(s.fechaFin) }}
+                        title="Editar fecha de fin"
+                        className="p-2 text-tn-muted hover:text-tn-yellow hover:bg-tn-yellow/5 rounded-lg transition-all"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
                     {s.activa && (
                       <button
                         onClick={() => setQuitarSusc(s.id)}
@@ -581,6 +604,50 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
           cliente={clienteActual}
           onClose={() => setEditModal(false)}
         />
+      )}
+
+      {/* ── Modal: editar fecha de fin (solo admin) ──────────────────────── */}
+      {editFin && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-sm p-6 space-y-5 shadow-2xl">
+            <div>
+              <h3 className="text-white font-bold text-lg">Editar fecha de fin</h3>
+              <p className="text-tn-muted text-sm mt-0.5">
+                {catalogo.find(c => c.id === editFin.catalogoId)?.nombre ?? 'Suscripción'}
+              </p>
+            </div>
+
+            <div className="bg-tn-dark border border-tn-border rounded-xl p-3 text-sm">
+              <p className="text-tn-muted text-xs">Inicio</p>
+              <p className="text-white font-medium">{fmtDate(editFin.fechaInicio)}</p>
+            </div>
+
+            <div>
+              <label className="label">Fecha de fin</label>
+              <input
+                type="date"
+                className="input-field"
+                value={nuevaFin}
+                min={editFin.fechaInicio.split('T')[0]}
+                onChange={e => setNuevaFin(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button className="btn-secondary flex-1" onClick={() => setEditFin(null)}>Cancelar</button>
+              <button
+                className="btn-primary flex-1"
+                disabled={!nuevaFin}
+                onClick={() => {
+                  editarFechaFin(editFin.id, nuevaFin)
+                  setEditFin(null)
+                }}
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

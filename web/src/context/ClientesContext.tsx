@@ -28,6 +28,15 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
 }
 
+/** Una suscripción está vigente si HOY está dentro de [fechaInicio, fechaFin] (ambos inclusive) */
+export function suscripcionVigente(s: SuscripcionCliente): boolean {
+  if (!s.activa) return false
+  const hoy = new Date()
+  const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  const inicioISO = s.fechaInicio.split('T')[0]
+  return hoyISO >= inicioISO && hoyISO <= s.fechaFin
+}
+
 const KEY_CLIENTES    = 'im_clientes'
 const KEY_CATALOGO    = 'im_suscripciones_catalogo'
 const KEY_SUSCS       = 'im_suscripciones_clientes'
@@ -58,6 +67,7 @@ interface ClientesContextValue {
   asignarSuscripcion: (clienteId: string, catalogoId: string) => void
   desactivarSuscripcion: (id: string) => void
   borrarSuscripcion: (id: string) => void
+  editarFechaFin: (id: string, fechaFin: string) => void
   suscripcionesDeCliente: (clienteId: string) => SuscripcionCliente[]
 
   // Auth portal clientes
@@ -150,6 +160,10 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
     updSuscs(suscripciones.map(s => s.id === id ? { ...s, activa: false } : s))
   }, [suscripciones, updSuscs])
 
+  const editarFechaFin = useCallback((id: string, fechaFin: string) => {
+    updSuscs(suscripciones.map(s => s.id === id ? { ...s, fechaFin } : s))
+  }, [suscripciones, updSuscs])
+
   const borrarSuscripcion = useCallback((id: string) => {
     updSuscs(suscripciones.filter(s => s.id !== id))
   }, [suscripciones, updSuscs])
@@ -167,7 +181,7 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       clientes, crearCliente, editarCliente, borrarCliente, toggleActivoCliente,
       catalogo, crearCatalogo, editarCatalogo, borrarCatalogo,
-      suscripciones, asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion, suscripcionesDeCliente,
+      suscripciones, asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion, editarFechaFin, suscripcionesDeCliente,
       loginCliente,
     }}>
       {children}

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { type Cliente, type Bloque, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente } from '../../types'
 import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosContext'
 import { useEjercicios } from '../../context/EjerciciosContext'
+import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import BloqueDetalleModal from './BloqueDetalleModal'
 import { exportarPDF, exportarExcel, exportarAimharder, exportarWodbuster } from './exporters'
 
@@ -78,24 +79,39 @@ type Vista = 'semana' | 'todas' | 'dia'
 export default function PortalCliente({ cliente, onLogout }: Props) {
   const { calendariosDeCliente } = useCalendarios()
   const { ejercicios } = useEjercicios()
-  const miscalendarios = calendariosDeCliente(cliente.id)
+  const { suscripciones } = useClientes()
+  const todosCalendarios = calendariosDeCliente(cliente.id)
 
-  // Selección de calendarios — por defecto todos seleccionados
+  // Un calendario es accesible si su suscripción está vigente HOY
+  const suscVigente = (suscClienteId: string) => {
+    const s = suscripciones.find(x => x.id === suscClienteId)
+    return s ? suscripcionVigente(s) : false
+  }
+
+  // Solo los calendarios con suscripción vigente son visibles/seleccionables
+  const miscalendarios = todosCalendarios.filter(c => suscVigente(c.suscripcionClienteId))
+  const calendariosBloqueados = todosCalendarios.filter(c => !suscVigente(c.suscripcionClienteId))
+
+  // Selección de calendarios — por defecto todos los vigentes seleccionados
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
     () => new Set(miscalendarios.map(c => c.id))
   )
 
-  // Si aparecen calendarios nuevos (asignación reciente del entrenador), añadirlos
+  // Si aparecen calendarios nuevos vigentes, añadirlos; quitar los que dejen de estar vigentes
   useEffect(() => {
     setSeleccionados(prev => {
-      const next = new Set(prev)
-      let cambio = false
-      miscalendarios.forEach(c => {
-        if (!next.has(c.id)) { next.add(c.id); cambio = true }
-      })
-      return cambio ? next : prev
+      const vigentesIds = new Set(miscalendarios.map(c => c.id))
+      const next = new Set<string>()
+      // mantener los previos que sigan vigentes
+      prev.forEach(id => { if (vigentesIds.has(id)) next.add(id) })
+      // añadir nuevos vigentes
+      miscalendarios.forEach(c => next.add(c.id))
+      // comparar para evitar re-render innecesario
+      if (next.size === prev.size && [...next].every(id => prev.has(id))) return prev
+      return next
     })
-  }, [miscalendarios])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todosCalendarios, suscripciones])
 
   const calsActivos = miscalendarios.filter(c => seleccionados.has(c.id))
   const semanas = useMemo(() => fusionarCalendarios(calsActivos), [calsActivos])
@@ -211,21 +227,54 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
   // ─── Render principal ───────────────────────────────────────────────────────
 
   if (miscalendarios.length === 0) {
+    // Distinguir: ¿no tiene nada, o tiene pero todo fuera de fecha (bloqueado)?
+    const soloBloqueados = calendariosBloqueados.length > 0
     return (
       <div className="min-h-screen bg-tn-black flex flex-col">
         <Header cliente={cliente} onLogout={onLogout} />
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="card max-w-md w-full p-8 text-center">
-            <div className="w-16 h-16 bg-tn-yellow/10 rounded-2xl flex items-center justify-center mb-4 mx-auto">
-              <svg className="w-8 h-8 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h2 className="text-white font-bold text-xl mb-2">Aún no tienes planificación</h2>
-            <p className="text-tn-muted text-sm">
-              Tu entrenador te asignará un programa muy pronto. ¡Mantente atento!
-            </p>
+            {soloBloqueados ? (
+              <>
+                <div className="w-16 h-16 bg-red-400/10 rounded-2xl flex items-center justify-center mb-4 mx-auto">
+                  <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <h2 className="text-white font-bold text-xl mb-2">Suscripción fuera de fecha</h2>
+                <p className="text-tn-muted text-sm mb-4">
+                  Tu suscripción no está vigente ahora mismo, así que tu planificación no está disponible.
+                </p>
+                <div className="bg-tn-dark border border-tn-border rounded-xl p-4 text-left space-y-2">
+                  {calendariosBloqueados.map(cal => {
+                    const s = suscripciones.find(x => x.id === cal.suscripcionClienteId)
+                    return (
+                      <div key={cal.id} className="flex items-center justify-between gap-2">
+                        <span className="text-white text-sm font-medium truncate">{cal.programaNombre}</span>
+                        {s && <span className="text-red-400/80 text-xs whitespace-nowrap">hasta {fmtFecha(s.fechaFin)}</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+                <p className="text-tn-muted text-xs mt-4">
+                  Contacta con tu entrenador para renovarla.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 bg-tn-yellow/10 rounded-2xl flex items-center justify-center mb-4 mx-auto">
+                  <svg className="w-8 h-8 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h2 className="text-white font-bold text-xl mb-2">Aún no tienes planificación</h2>
+                <p className="text-tn-muted text-sm">
+                  Tu entrenador te asignará un programa muy pronto. ¡Mantente atento!
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
