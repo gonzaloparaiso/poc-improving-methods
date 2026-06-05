@@ -92,7 +92,7 @@ export default function SuscripcionesCatalogo() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-tn-border">
-                  {['Suscripción', 'Programa', 'Tipo', 'Clientes', ''].map(h => (
+                  {['Suscripción', 'Programa', 'Precio', 'Tipo', 'Clientes', ''].map(h => (
                     <th key={h} className={`text-left text-tn-muted text-xs font-semibold uppercase tracking-wider px-5 py-4 ${
                       h === 'Programa' ? 'hidden md:table-cell' : ''
                     }`}>{h}</th>
@@ -121,6 +121,17 @@ export default function SuscripcionesCatalogo() {
                                 <span key={p!.id} className="text-tn-muted text-sm">{p!.nombre}</span>
                               ))}
                             </div>}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-col">
+                          <span className="text-white font-semibold text-sm">
+                            {s.precioMensual ? `${s.precioMensual} €` : '—'}
+                            {s.precioMensual ? <span className="text-tn-muted font-normal text-xs">/mes</span> : null}
+                          </span>
+                          {s.primerMesPrueba && (
+                            <span className="text-green-400 text-xs font-medium">1er mes gratis</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-4"><TipoBadge tipo={s.tipo} /></td>
                       <td className="px-5 py-4">

@@ -95,6 +95,8 @@ export interface CatalogoSuscripcion {
   nombre: string
   programas: ProgramaAsociado[]   // lista (antes era un solo programaId)
   tipo: TipoSuscripcion
+  precioMensual: number           // € al mes
+  primerMesPrueba: boolean        // true = el primer mes no se cobra
   creadoEn: string
 }
 

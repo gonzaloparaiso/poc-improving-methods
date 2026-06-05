@@ -32,6 +32,8 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
   const [nombre, setNombre]   = useState('')
   const [tipo, setTipo]       = useState<TipoSuscripcion>('recurrente')
   const [progs, setProgs]     = useState<ProgLocal[]>([])
+  const [precio, setPrecio]   = useState('')
+  const [primerMesPrueba, setPrimerMesPrueba] = useState(false)
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
 
@@ -40,8 +42,11 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
       setNombre(item.nombre)
       setTipo(item.tipo)
       setProgs(item.programas.map(p => ({ ...p, _key: genId() })))
+      setPrecio(item.precioMensual ? String(item.precioMensual) : '')
+      setPrimerMesPrueba(item.primerMesPrueba ?? false)
     } else {
       setNombre(''); setTipo('recurrente'); setProgs([])
+      setPrecio(''); setPrimerMesPrueba(false)
     }
     setError('')
   }, [item])
@@ -80,9 +85,12 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
       fechaInicio: tipo === 'recurrente' && p.fechaInicio ? getLunes(p.fechaInicio) : null,
     }))
 
+    const precioNum = parseFloat(precio.replace(',', '.')) || 0
+    if (precioNum < 0) return setError('El precio no puede ser negativo')
+
     setSaving(true)
     setTimeout(() => {
-      const data = { nombre: nombre.trim(), programas: progFinal, tipo }
+      const data = { nombre: nombre.trim(), programas: progFinal, tipo, precioMensual: precioNum, primerMesPrueba }
       if (isEdit && item) {
         editarCatalogo(item.id, data)
         onSaved(item.id, progFinal)
@@ -135,6 +143,36 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
               ))}
             </div>
           </div>
+
+          {/* Precio */}
+          <div>
+            <label className="label">Precio mensual</label>
+            <div className="relative">
+              <input
+                type="text"
+                inputMode="decimal"
+                className="input-field pr-8"
+                placeholder="0"
+                value={precio}
+                onChange={e => setPrecio(e.target.value.replace(/[^0-9.,]/g, ''))}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-tn-muted">€</span>
+            </div>
+          </div>
+
+          {/* Primer mes de prueba */}
+          <label className="flex items-center gap-3 cursor-pointer group">
+            <div
+              onClick={() => setPrimerMesPrueba(p => !p)}
+              className={`w-10 h-6 rounded-full transition-all relative flex-shrink-0 ${primerMesPrueba ? 'bg-tn-yellow' : 'bg-tn-border'}`}
+            >
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${primerMesPrueba ? 'left-5' : 'left-1'}`} />
+            </div>
+            <div>
+              <p className="text-white text-sm font-semibold">Primer mes de prueba</p>
+              <p className="text-tn-muted text-xs">El primer mes no se cobra (gratis)</p>
+            </div>
+          </label>
 
           {/* Programas */}
           <div className="border-t border-tn-border pt-4">

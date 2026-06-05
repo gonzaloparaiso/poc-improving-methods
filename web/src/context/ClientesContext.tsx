@@ -1,10 +1,16 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import { type Cliente, type CatalogoSuscripcion, type SuscripcionCliente, type TipoSuscripcion, type ProgramaAsociado } from '../types'
 
-/** Migra un catalogo item antiguo (con programaId/fechaInicioPrograma) al nuevo formato */
+/** Migra un catalogo item antiguo al nuevo formato (programas[] + precio/prueba) */
 function migrarCatalogo(raw: Record<string, unknown>): CatalogoSuscripcion {
-  if (Array.isArray(raw.programas)) return raw as unknown as CatalogoSuscripcion
-  // formato antiguo
+  // Defaults para campos nuevos
+  const precioMensual = typeof raw.precioMensual === 'number' ? raw.precioMensual : 0
+  const primerMesPrueba = raw.primerMesPrueba === true
+
+  if (Array.isArray(raw.programas)) {
+    return { ...(raw as unknown as CatalogoSuscripcion), precioMensual, primerMesPrueba }
+  }
+  // formato antiguo (programaId / fechaInicioPrograma)
   const programaId = raw.programaId as string | null
   const fechaInicio = (raw.fechaInicioPrograma ?? null) as string | null
   return {
@@ -13,6 +19,8 @@ function migrarCatalogo(raw: Record<string, unknown>): CatalogoSuscripcion {
     tipo: raw.tipo as TipoSuscripcion,
     creadoEn: raw.creadoEn as string,
     programas: programaId ? [{ programaId, fechaInicio }] : [],
+    precioMensual,
+    primerMesPrueba,
   }
 }
 
@@ -41,8 +49,8 @@ interface ClientesContextValue {
 
   // Catálogo de suscripciones
   catalogo: CatalogoSuscripcion[]
-  crearCatalogo: (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion }) => CatalogoSuscripcion
-  editarCatalogo: (id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion }>) => void
+  crearCatalogo: (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }) => CatalogoSuscripcion
+  editarCatalogo: (id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }>) => void
   borrarCatalogo: (id: string) => void
 
   // Suscripciones de clientes
@@ -96,13 +104,13 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
   }, [clientes, editarCliente])
 
   // ── Catálogo ──
-  const crearCatalogo = useCallback((data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion }) => {
+  const crearCatalogo = useCallback((data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }) => {
     const nueva: CatalogoSuscripcion = { ...data, id: genId(), creadoEn: new Date().toISOString() }
     updCatalogo([...catalogo, nueva])
     return nueva
   }, [catalogo, updCatalogo])
 
-  const editarCatalogo = useCallback((id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion }>) => {
+  const editarCatalogo = useCallback((id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }>) => {
     updCatalogo(catalogo.map(c => c.id === id ? { ...c, ...data } : c))
   }, [catalogo, updCatalogo])
 
