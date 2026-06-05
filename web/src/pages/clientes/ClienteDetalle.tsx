@@ -23,7 +23,7 @@ interface Props {
 export default function ClienteDetalle({ cliente, onVolver }: Props) {
   const {
     catalogo, suscripciones,
-    asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion, editarFechaFin,
+    asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion, editarFechas,
     clientes,
   } = useClientes()
   const { programas } = usePlanificacion()
@@ -45,8 +45,9 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   const [catPendiente, setCatPendiente]   = useState<CatalogoSuscripcion | null>(null)
   const [fechaPendiente, setFechaPendiente] = useState('')
 
-  // Editar fecha fin de una suscripción (solo admin)
-  const [editFin, setEditFin]             = useState<SuscripcionCliente | null>(null)
+  // Editar fechas de una suscripción (solo admin)
+  const [editFechas, setEditFechas]       = useState<SuscripcionCliente | null>(null)
+  const [nuevoInicio, setNuevoInicio]     = useState('')
   const [nuevaFin, setNuevaFin]           = useState('')
 
   const missSuscs = suscripciones.filter(s => s.clienteId === clienteActual.id)
@@ -320,8 +321,8 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {esAdmin && (
                       <button
-                        onClick={() => { setEditFin(s); setNuevaFin(s.fechaFin) }}
-                        title="Editar fecha de fin"
+                        onClick={() => { setEditFechas(s); setNuevoInicio(s.fechaInicio.split('T')[0]); setNuevaFin(s.fechaFin) }}
+                        title="Editar fechas"
                         className="p-2 text-tn-muted hover:text-tn-yellow hover:bg-tn-yellow/5 rounded-lg transition-all"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -606,20 +607,25 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
         />
       )}
 
-      {/* ── Modal: editar fecha de fin (solo admin) ──────────────────────── */}
-      {editFin && (
+      {/* ── Modal: editar fechas (solo admin) ────────────────────────────── */}
+      {editFechas && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="card w-full max-w-sm p-6 space-y-5 shadow-2xl">
             <div>
-              <h3 className="text-white font-bold text-lg">Editar fecha de fin</h3>
+              <h3 className="text-white font-bold text-lg">Editar fechas</h3>
               <p className="text-tn-muted text-sm mt-0.5">
-                {catalogo.find(c => c.id === editFin.catalogoId)?.nombre ?? 'Suscripción'}
+                {catalogo.find(c => c.id === editFechas.catalogoId)?.nombre ?? 'Suscripción'}
               </p>
             </div>
 
-            <div className="bg-tn-dark border border-tn-border rounded-xl p-3 text-sm">
-              <p className="text-tn-muted text-xs">Inicio</p>
-              <p className="text-white font-medium">{fmtDate(editFin.fechaInicio)}</p>
+            <div>
+              <label className="label">Fecha de inicio</label>
+              <input
+                type="date"
+                className="input-field"
+                value={nuevoInicio}
+                onChange={e => setNuevoInicio(e.target.value)}
+              />
             </div>
 
             <div>
@@ -628,19 +634,30 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                 type="date"
                 className="input-field"
                 value={nuevaFin}
-                min={editFin.fechaInicio.split('T')[0]}
+                min={nuevoInicio}
                 onChange={e => setNuevaFin(e.target.value)}
               />
             </div>
 
+            {nuevoInicio && nuevaFin && nuevaFin < nuevoInicio && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-sm">
+                La fecha de fin no puede ser anterior a la de inicio
+              </div>
+            )}
+
             <div className="flex gap-3">
-              <button className="btn-secondary flex-1" onClick={() => setEditFin(null)}>Cancelar</button>
+              <button className="btn-secondary flex-1" onClick={() => setEditFechas(null)}>Cancelar</button>
               <button
                 className="btn-primary flex-1"
-                disabled={!nuevaFin}
+                disabled={!nuevoInicio || !nuevaFin || nuevaFin < nuevoInicio}
                 onClick={() => {
-                  editarFechaFin(editFin.id, nuevaFin)
-                  setEditFin(null)
+                  // Conservar la hora original del inicio si solo cambia el día
+                  const horaOriginal = editFechas.fechaInicio.includes('T')
+                    ? editFechas.fechaInicio.split('T')[1]
+                    : '00:00:00.000Z'
+                  const inicioISO = `${nuevoInicio}T${horaOriginal}`
+                  editarFechas(editFechas.id, inicioISO, nuevaFin)
+                  setEditFechas(null)
                 }}
               >
                 Guardar

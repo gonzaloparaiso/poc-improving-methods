@@ -67,7 +67,7 @@ interface ClientesContextValue {
   asignarSuscripcion: (clienteId: string, catalogoId: string) => void
   desactivarSuscripcion: (id: string) => void
   borrarSuscripcion: (id: string) => void
-  editarFechaFin: (id: string, fechaFin: string) => void
+  editarFechas: (id: string, fechaInicio: string, fechaFin: string) => void
   suscripcionesDeCliente: (clienteId: string) => SuscripcionCliente[]
 
   // Auth portal clientes
@@ -160,8 +160,8 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
     updSuscs(suscripciones.map(s => s.id === id ? { ...s, activa: false } : s))
   }, [suscripciones, updSuscs])
 
-  const editarFechaFin = useCallback((id: string, fechaFin: string) => {
-    updSuscs(suscripciones.map(s => s.id === id ? { ...s, fechaFin } : s))
+  const editarFechas = useCallback((id: string, fechaInicio: string, fechaFin: string) => {
+    updSuscs(suscripciones.map(s => s.id === id ? { ...s, fechaInicio, fechaFin } : s))
   }, [suscripciones, updSuscs])
 
   const borrarSuscripcion = useCallback((id: string) => {
@@ -181,7 +181,7 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       clientes, crearCliente, editarCliente, borrarCliente, toggleActivoCliente,
       catalogo, crearCatalogo, editarCatalogo, borrarCatalogo,
-      suscripciones, asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion, editarFechaFin, suscripcionesDeCliente,
+      suscripciones, asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion, editarFechas, suscripcionesDeCliente,
       loginCliente,
     }}>
       {children}
