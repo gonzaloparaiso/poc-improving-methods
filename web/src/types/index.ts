@@ -104,7 +104,8 @@ export interface SuscripcionCliente {
   id: string
   catalogoId: string            // ref a CatalogoSuscripcion
   clienteId: string
-  fechaInicio: string
+  fechaInicio: string           // ISO datetime: momento de la asignación
+  fechaFin: string              // ISO date: 1 mes después + 3 días
   activa: boolean
 }
 

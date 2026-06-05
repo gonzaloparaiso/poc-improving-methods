@@ -71,7 +71,17 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
   const [catalogo, setCatalogo] = useState<CatalogoSuscripcion[]>(() =>
     (load(KEY_CATALOGO, []) as Record<string, unknown>[]).map(migrarCatalogo)
   )
-  const [suscripciones, setSuscs]     = useState<SuscripcionCliente[]>(() => load(KEY_SUSCS, []))
+  const [suscripciones, setSuscs]     = useState<SuscripcionCliente[]>(() =>
+    load<SuscripcionCliente[]>(KEY_SUSCS, []).map(s => {
+      if (s.fechaFin) return s
+      // Migración: calcular fin = inicio + 1 mes + 3 días
+      const ini = new Date(s.fechaInicio)
+      const fin = new Date(ini)
+      fin.setMonth(fin.getMonth() + 1)
+      fin.setDate(fin.getDate() + 3)
+      return { ...s, fechaFin: `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}-${String(fin.getDate()).padStart(2, '0')}` }
+    })
+  )
 
   const updClientes = useCallback((next: Cliente[]) => { setClientes(next); save(KEY_CLIENTES, next) }, [])
   const updCatalogo = useCallback((next: CatalogoSuscripcion[]) => { setCatalogo(next); save(KEY_CATALOGO, next) }, [])
@@ -120,9 +130,18 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
 
   // ── Suscripciones de clientes ──
   const asignarSuscripcion = useCallback((clienteId: string, catalogoId: string) => {
+    const inicio = new Date()
+    // Fin = 1 mes después + 3 días
+    const fin = new Date(inicio)
+    fin.setMonth(fin.getMonth() + 1)
+    fin.setDate(fin.getDate() + 3)
+    const finISO = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}-${String(fin.getDate()).padStart(2, '0')}`
+
     const nueva: SuscripcionCliente = {
       id: genId(), catalogoId, clienteId,
-      fechaInicio: new Date().toISOString(), activa: true,
+      fechaInicio: inicio.toISOString(),
+      fechaFin: finISO,
+      activa: true,
     }
     updSuscs([...suscripciones, nueva])
   }, [suscripciones, updSuscs])

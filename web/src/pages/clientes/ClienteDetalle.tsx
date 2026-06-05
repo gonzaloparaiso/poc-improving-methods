@@ -290,7 +290,12 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                         const pr = programas.find(p => p.id === pa.programaId)
                         return pr ? <span key={pa.programaId} className="text-tn-muted text-xs">📋 {pr.nombre}</span> : null
                       })}
-                      <span className="text-tn-muted text-xs">Desde {fmtDate(s.fechaInicio)}</span>
+                      <span className="text-tn-muted text-xs">
+                        {fmtDate(s.fechaInicio)} → {fmtDate(s.fechaFin)}
+                      </span>
+                      {cat?.precioMensual ? (
+                        <span className="text-tn-muted text-xs">{cat.precioMensual} €/mes</span>
+                      ) : null}
                       {cat?.tipo && (
                         <span className={`text-xs font-medium ${cat.tipo === 'recurrente' ? 'text-blue-400' : 'text-green-400'}`}>
                           {cat.tipo === 'recurrente' ? '↻ Recurrente' : '✓ Pago único'}
