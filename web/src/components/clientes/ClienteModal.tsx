@@ -7,7 +7,11 @@ interface Props {
   onClose: () => void
 }
 
-const empty = { nombre: '', apellido: '', email: '', username: '', password: '', passwordConfirm: '', activo: true }
+const empty = {
+  nombre: '', apellido: '', email: '', username: '', password: '', passwordConfirm: '', activo: true,
+  telefono: '', direccion: '', dni: '',
+  nif: '', razonSocial: '', direccionFacturacion: '', emailFacturacion: '',
+}
 
 export default function ClienteModal({ cliente, onClose }: Props) {
   const { crearCliente, editarCliente, clientes } = useClientes()
@@ -19,8 +23,13 @@ export default function ClienteModal({ cliente, onClose }: Props) {
 
   useEffect(() => {
     setForm(cliente
-      ? { nombre: cliente.nombre, apellido: cliente.apellido, email: cliente.email,
-          username: cliente.username, password: '', passwordConfirm: '', activo: cliente.activo }
+      ? {
+          nombre: cliente.nombre, apellido: cliente.apellido, email: cliente.email,
+          username: cliente.username, password: '', passwordConfirm: '', activo: cliente.activo,
+          telefono: cliente.telefono ?? '', direccion: cliente.direccion ?? '', dni: cliente.dni ?? '',
+          nif: cliente.nif ?? '', razonSocial: cliente.razonSocial ?? '',
+          direccionFacturacion: cliente.direccionFacturacion ?? '', emailFacturacion: cliente.emailFacturacion ?? '',
+        }
       : empty)
     setError('')
   }, [cliente])
@@ -52,6 +61,9 @@ export default function ClienteModal({ cliente, onClose }: Props) {
         nombre: form.nombre.trim(), apellido: form.apellido.trim(),
         email: form.email.trim(), username: form.username.trim(),
         activo: form.activo,
+        telefono: form.telefono.trim(), direccion: form.direccion.trim(), dni: form.dni.trim(),
+        nif: form.nif.trim(), razonSocial: form.razonSocial.trim(),
+        direccionFacturacion: form.direccionFacturacion.trim(), emailFacturacion: form.emailFacturacion.trim(),
         ...(form.password ? { password: form.password } : {}),
       }
       if (isEdit && cliente) editarCliente(cliente.id, datos)
@@ -64,7 +76,7 @@ export default function ClienteModal({ cliente, onClose }: Props) {
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="card w-full sm:max-w-lg sm:rounded-xl rounded-t-2xl rounded-b-none sm:rounded-b-xl max-h-[92vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-tn-border">
+        <div className="flex items-center justify-between p-6 border-b border-tn-border sticky top-0 bg-tn-card z-10">
           <div>
             <h3 className="text-white font-bold text-lg">{isEdit ? 'Editar cliente' : 'Nuevo cliente'}</h3>
             <p className="text-tn-muted text-xs mt-0.5">
@@ -87,8 +99,8 @@ export default function ClienteModal({ cliente, onClose }: Props) {
                 value={form.nombre} onChange={e => set('nombre', e.target.value)} autoFocus required />
             </div>
             <div>
-              <label className="label">Apellido</label>
-              <input type="text" className="input-field" placeholder="Apellido"
+              <label className="label">Apellidos</label>
+              <input type="text" className="input-field" placeholder="Apellidos"
                 value={form.apellido} onChange={e => set('apellido', e.target.value)} />
             </div>
           </div>
@@ -98,6 +110,27 @@ export default function ClienteModal({ cliente, onClose }: Props) {
             <label className="label">Email * <span className="text-tn-yellow text-xs">(usado para entrar)</span></label>
             <input type="email" className="input-field" placeholder="correo@ejemplo.com"
               value={form.email} onChange={e => set('email', e.target.value)} required />
+          </div>
+
+          {/* Teléfono + DNI */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Teléfono</label>
+              <input type="tel" className="input-field" placeholder="+34 600 000 000"
+                value={form.telefono} onChange={e => set('telefono', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">DNI</label>
+              <input type="text" className="input-field" placeholder="00000000X"
+                value={form.dni} onChange={e => set('dni', e.target.value)} />
+            </div>
+          </div>
+
+          {/* Dirección */}
+          <div>
+            <label className="label">Dirección</label>
+            <input type="text" className="input-field" placeholder="Calle, número, ciudad, CP"
+              value={form.direccion} onChange={e => set('direccion', e.target.value)} />
           </div>
 
           {/* Username */}
@@ -141,6 +174,37 @@ export default function ClienteModal({ cliente, onClose }: Props) {
               </div>
             </div>
             {isEdit && <p className="text-tn-muted text-xs mt-2">Deja en blanco si no quieres cambiar la contraseña</p>}
+          </div>
+
+          {/* Facturación */}
+          <div className="border-t border-tn-border pt-4">
+            <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider mb-3">
+              Facturación <span className="text-tn-muted/60 normal-case">(opcional, empresas)</span>
+            </p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label">Razón social</label>
+                  <input type="text" className="input-field" placeholder="Empresa S.L."
+                    value={form.razonSocial} onChange={e => set('razonSocial', e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">NIF / CIF</label>
+                  <input type="text" className="input-field" placeholder="B00000000"
+                    value={form.nif} onChange={e => set('nif', e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="label">Dirección de facturación</label>
+                <input type="text" className="input-field" placeholder="Dirección fiscal"
+                  value={form.direccionFacturacion} onChange={e => set('direccionFacturacion', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Email de facturación</label>
+                <input type="email" className="input-field" placeholder="facturacion@empresa.com"
+                  value={form.emailFacturacion} onChange={e => set('emailFacturacion', e.target.value)} />
+              </div>
+            </div>
           </div>
 
           {/* Estado */}

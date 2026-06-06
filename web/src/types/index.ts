@@ -68,6 +68,15 @@ export interface Ejercicio {
 }
 
 // ─── Clientes ─────────────────────────────────────────────────────────────────
+export interface ContactoCliente {
+  id: string
+  nombre: string
+  relacion: string      // "Familiar", "Emergencia", "Comercial"...
+  telefono: string
+  email: string
+  notas: string
+}
+
 export interface Cliente {
   id: string
   nombre: string
@@ -79,6 +88,20 @@ export interface Cliente {
   creadoEn: string
   bajaEn: string | null
   suscripcionesIds: string[]  // refs a SuscripcionCliente[]
+
+  // Datos personales / contacto
+  telefono?: string
+  direccion?: string
+  dni?: string
+
+  // Facturación (empresas)
+  nif?: string              // NIF/CIF de empresa
+  razonSocial?: string      // nombre fiscal / empresa
+  direccionFacturacion?: string
+  emailFacturacion?: string
+
+  // Contactos asociados
+  contactos?: ContactoCliente[]
 }
 
 // ─── Suscripciones ────────────────────────────────────────────────────────────

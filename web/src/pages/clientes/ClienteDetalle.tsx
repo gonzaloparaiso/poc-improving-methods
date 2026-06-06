@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion, type SuscripcionCliente, CALENDAR_COLORS } from '../../types'
+import { useState, type FormEvent } from 'react'
+import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion, type SuscripcionCliente, type ContactoCliente, CALENDAR_COLORS } from '../../types'
 import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
 import { useCalendarios, fmtFecha, siguienteLunes, addDays } from '../../context/CalendariosContext'
@@ -15,6 +15,12 @@ function fmtDate(iso: string | null) {
   return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
+}
+
+type Tab = 'info' | 'suscripciones' | 'contactos' | 'dinero'
+
 interface Props {
   cliente: Cliente
   onVolver: () => void
@@ -23,16 +29,16 @@ interface Props {
 export default function ClienteDetalle({ cliente, onVolver }: Props) {
   const {
     catalogo, suscripciones,
-    asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion, editarFechas,
+    asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion, editarFechas, editarCliente,
     clientes,
   } = useClientes()
   const { programas } = usePlanificacion()
   const { crearCalendario, calendariosDeCliente, borrarCalendario } = useCalendarios()
   const { esAdmin } = usePermisos()
 
-  // Refresco del cliente desde el store (puede haber sido editado)
   const clienteActual = clientes.find(c => c.id === cliente.id) ?? cliente
 
+  const [tab, setTab]                     = useState<Tab>('info')
   const [editModal, setEditModal]         = useState(false)
   const [asignarModal, setAsignarModal]   = useState(false)
   const [quitarSusc, setQuitarSusc]       = useState<string | null>(null)
@@ -41,77 +47,83 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   const [seleccion, setSeleccion]         = useState<Set<string>>(new Set())
   const [vistaCombi, setVistaCombi]       = useState(false)
 
-  // Para recurrentes: paso intermedio de elección de fecha
   const [catPendiente, setCatPendiente]   = useState<CatalogoSuscripcion | null>(null)
   const [fechaPendiente, setFechaPendiente] = useState('')
 
-  // Editar fechas de una suscripción (solo admin)
   const [editFechas, setEditFechas]       = useState<SuscripcionCliente | null>(null)
   const [nuevoInicio, setNuevoInicio]     = useState('')
   const [nuevaFin, setNuevaFin]           = useState('')
 
+  // Contactos
+  const [contactoEdit, setContactoEdit]   = useState<ContactoCliente | 'nuevo' | null>(null)
+  const [borrarContacto, setBorrarContacto] = useState<ContactoCliente | null>(null)
+
   const missSuscs = suscripciones.filter(s => s.clienteId === clienteActual.id)
   const missSuscsActivas = missSuscs.filter(s => s.activa)
   const misCalendarios = calendariosDeCliente(clienteActual.id)
+  const contactos = clienteActual.contactos ?? []
 
-  // Catálogo que aún no tiene asignado (activo) este cliente
   const catalogoDisponible = catalogo.filter(
     cat => !missSuscsActivas.some(s => s.catalogoId === cat.id),
   )
 
-  /** Crea calendarios para todos los programas de una suscripción recién asignada.
-   *  Recurrentes: se asigna el programa COMPLETO (desde su fecha de inicio) de cada
-   *  programa cuya ventana de validez [inicio, inicio + semanas) cubra la fecha de
-   *  compra (hoy), más todos los que empiecen en el futuro. Se descartan solo los
-   *  que ya terminaron antes de la compra. */
+  // ── Pagos (derivados de las suscripciones) ──────────────────────────────────
+  const pagos = missSuscs
+    .map(s => {
+      const cat = catalogo.find(c => c.id === s.catalogoId)
+      if (!cat) return null
+      const gratis = cat.primerMesPrueba || (cat.precioMensual ?? 0) === 0
+      return {
+        id: s.id,
+        fecha: s.fechaInicio,
+        concepto: cat.nombre,
+        tipo: cat.tipo as 'unico' | 'recurrente',
+        importe: gratis ? 0 : cat.precioMensual,
+        gratis,
+      }
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null)
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))
+
+  const totalPagado = pagos.reduce((acc, p) => acc + p.importe, 0)
+
+  // ── Calendarios ──────────────────────────────────────────────────────────────
   const crearCalendariosParaCat = (cat: CatalogoSuscripcion, scId: string, fechaOverride?: string) => {
     const ahora = new Date()
     const hoyISO = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
-
     cat.programas.forEach(pa => {
       const programa = programas.find(p => p.id === pa.programaId)
       if (!programa) return
-
       let fecha: string
       if (fechaOverride) {
         fecha = fechaOverride
       } else if (cat.tipo === 'recurrente') {
-        // Si no tiene fecha en el catálogo → siguiente lunes
         if (!pa.fechaInicio) {
           fecha = siguienteLunes()
         } else {
-          // Último día planificado del programa: inicio + (semanas * 7) - 1
           const finPrograma = addDays(pa.fechaInicio, programa.semanas.length * 7 - 1)
-          // Si el programa ya terminó antes de la compra → no asignar
           if (finPrograma < hoyISO) return
-          // Si no, asignar el programa COMPLETO desde su fecha de inicio original
           fecha = pa.fechaInicio
         }
       } else {
-        // Pago único: todos desde el siguiente lunes
         fecha = siguienteLunes()
       }
       crearCalendario(clienteActual.id, scId, programa, fecha)
     })
   }
 
-  /** Lee la última suscripción asignada al cliente para un catálogo (desde localStorage, post-update) */
   const getLastSc = (catalogoId: string) =>
     [...(JSON.parse(localStorage.getItem('im_suscripciones_clientes') ?? '[]') as {id:string;clienteId:string;catalogoId:string;activa:boolean}[])]
       .filter(s => s.clienteId === clienteActual.id && s.catalogoId === catalogoId && s.activa)
       .at(-1)
 
-  /** Al pulsar una suscripción en el modal de asignar */
   const seleccionarCatalogo = (cat: CatalogoSuscripcion) => {
     const tieneRecurrenteSinFecha = cat.tipo === 'recurrente' && cat.programas.some(p => p.programaId && !p.fechaInicio)
-
     if (cat.tipo === 'recurrente' && cat.programas.length > 0 && tieneRecurrenteSinFecha) {
-      // Algún programa no tiene fecha → pedir fecha global
       setCatPendiente(cat)
       setFechaPendiente(cat.programas[0]?.fechaInicio ?? siguienteLunes())
       setAsignarModal(false)
     } else {
-      // Pago único, o recurrente con todas las fechas ya fijadas en el catálogo
       asignarSuscripcion(clienteActual.id, cat.id)
       setTimeout(() => {
         const sc = getLastSc(cat.id)
@@ -121,7 +133,6 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     }
   }
 
-  /** Confirmar la fecha cuando el recurrente no la tenía en el catálogo */
   const confirmarRecurrente = () => {
     if (!catPendiente) return
     const fecha = getLunes(fechaPendiente)
@@ -133,50 +144,69 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     setCatPendiente(null)
   }
 
-  // Vista combinada
+  // ── Contactos ────────────────────────────────────────────────────────────────
+  const guardarContacto = (data: ContactoCliente) => {
+    const lista = clienteActual.contactos ?? []
+    const existe = lista.some(c => c.id === data.id)
+    const next = existe ? lista.map(c => c.id === data.id ? data : c) : [...lista, data]
+    editarCliente(clienteActual.id, { contactos: next })
+    setContactoEdit(null)
+  }
+  const eliminarContacto = (id: string) => {
+    editarCliente(clienteActual.id, { contactos: (clienteActual.contactos ?? []).filter(c => c.id !== id) })
+    setBorrarContacto(null)
+  }
+
+  // ── Vistas a pantalla completa ────────────────────────────────────────────────
   if (vistaCombi && seleccion.size > 0) {
     const calsSeleccionados = misCalendarios.filter(c => seleccion.has(c.id))
-    return (
-      <CalendarioCombinado
-        calendarios={calsSeleccionados}
-        onVolver={() => setVistaCombi(false)}
-      />
-    )
+    return <CalendarioCombinado calendarios={calsSeleccionados} onVolver={() => setVistaCombi(false)} />
+  }
+  if (calendarioAbierto) {
+    return <CalendarioClienteView calendario={calendarioAbierto} onVolver={() => setCalendarioAbierto(null)} />
   }
 
-  // Vista de calendario individual
-  if (calendarioAbierto) {
-    return (
-      <CalendarioClienteView
-        calendario={calendarioAbierto}
-        onVolver={() => setCalendarioAbierto(null)}
-      />
-    )
-  }
+  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'info', label: 'Información', icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+    ) },
+    { id: 'suscripciones', label: 'Suscripciones', icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
+    ) },
+    { id: 'contactos', label: 'Contactos', icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+    ) },
+    { id: 'dinero', label: 'Dinero', icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+    ) },
+  ]
+
+  const inicial = (clienteActual.nombre[0] ?? '?').toUpperCase()
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-start gap-4">
-        <button
-          onClick={onVolver}
-          className="p-2 text-tn-muted hover:text-white hover:bg-tn-card rounded-lg transition-all mt-0.5"
-        >
+        <button onClick={onVolver}
+          className="p-2 text-tn-muted hover:text-white hover:bg-tn-card rounded-lg transition-all mt-0.5">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
+        <div className="w-12 h-12 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+          <span className="text-blue-400 font-black">{inicial}</span>
+        </div>
         <div className="flex-1 min-w-0">
-          <h2 className="text-2xl font-black text-white">
-            {clienteActual.nombre} {clienteActual.apellido}
-          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-2xl font-black text-white">{clienteActual.nombre} {clienteActual.apellido}</h2>
+            {clienteActual.activo
+              ? <span className="badge-active text-xs"><span className="w-1.5 h-1.5 rounded-full bg-green-400" />Activo</span>
+              : <span className="badge-inactive text-xs"><span className="w-1.5 h-1.5 rounded-full bg-tn-muted" />Inactivo</span>}
+          </div>
           <p className="text-tn-muted text-sm mt-0.5 font-mono">@{clienteActual.username}</p>
         </div>
-        <button
-          onClick={() => setEditModal(true)}
-          className="btn-secondary flex items-center gap-2 flex-shrink-0"
-        >
+        <button onClick={() => setEditModal(true)} className="btn-secondary flex items-center gap-2 flex-shrink-0">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
@@ -184,493 +214,567 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
         </button>
       </div>
 
-      {/* ── Datos del cliente ────────────────────────────────────────────── */}
-      <div className="card p-6">
-        <h3 className="text-white font-bold mb-4 flex items-center gap-2">
-          <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
-          Datos personales
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          {[
-            { label: 'Email', value: clienteActual.email },
-            { label: 'Usuario', value: `@${clienteActual.username}` },
-            { label: 'Estado', value: clienteActual.activo ? 'Activo' : 'Inactivo' },
-            { label: 'Alta', value: fmtDate(clienteActual.creadoEn) },
-            { label: 'Baja', value: fmtDate(clienteActual.bajaEn) },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <p className="text-tn-muted text-xs font-medium mb-0.5">{label}</p>
-              <p className={`text-sm font-semibold ${
-                label === 'Estado'
-                  ? clienteActual.activo ? 'text-green-400' : 'text-red-400'
-                  : 'text-white'
-              }`}>
-                {value}
-              </p>
-            </div>
-          ))}
-        </div>
+      {/* ── Tabs ────────────────────────────────────────────────────────── */}
+      <div className="flex gap-1 bg-tn-dark border border-tn-border rounded-xl p-1 overflow-x-auto">
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+              tab === t.id ? 'bg-tn-yellow text-tn-black' : 'text-tn-muted hover:text-white'
+            }`}>
+            {t.icon}
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* ── Suscripciones ────────────────────────────────────────────────── */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-white font-bold flex items-center gap-2">
-            <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-            </svg>
-            Suscripciones
-            {missSuscsActivas.length > 0 && (
-              <span className="text-tn-muted font-normal text-sm">
-                ({missSuscsActivas.length} activa{missSuscsActivas.length !== 1 ? 's' : ''})
-              </span>
-            )}
-          </h3>
-          {catalogoDisponible.length > 0 && (
-            <button
-              className="btn-primary flex items-center gap-1.5 text-sm py-2 px-4"
-              onClick={() => setAsignarModal(true)}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-              </svg>
-              Asignar
-            </button>
-          )}
-        </div>
-
-        {missSuscs.length === 0 ? (
-          <div className="card flex flex-col items-center justify-center py-10 text-center">
-            <div className="w-12 h-12 bg-tn-border rounded-xl flex items-center justify-center mb-3">
-              <svg className="w-6 h-6 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-              </svg>
+      {/* ════════════ TAB: INFORMACIÓN ════════════ */}
+      {tab === 'info' && (
+        <div className="space-y-4">
+          <div className="card p-6">
+            <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+              <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+              Datos personales
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {[
+                { label: 'Nombre', value: `${clienteActual.nombre} ${clienteActual.apellido}` },
+                { label: 'Email', value: clienteActual.email },
+                { label: 'Teléfono', value: clienteActual.telefono || '—' },
+                { label: 'DNI', value: clienteActual.dni || '—' },
+                { label: 'Usuario', value: `@${clienteActual.username}` },
+                { label: 'Dirección', value: clienteActual.direccion || '—' },
+                { label: 'Alta', value: fmtDate(clienteActual.creadoEn) },
+                { label: 'Baja', value: fmtDate(clienteActual.bajaEn) },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <p className="text-tn-muted text-xs font-medium mb-0.5">{label}</p>
+                  <p className="text-sm font-semibold text-white break-words">{value}</p>
+                </div>
+              ))}
             </div>
-            <p className="text-white font-semibold text-sm mb-1">Sin suscripciones</p>
-            <p className="text-tn-muted text-xs mb-4">
-              {catalogo.length === 0
-                ? 'Crea suscripciones en el catálogo primero'
-                : 'Asigna una suscripción del catálogo a este cliente'}
-            </p>
-            {catalogoDisponible.length > 0 && (
-              <button
-                className="btn-primary flex items-center gap-2 text-sm py-2 px-4"
-                onClick={() => setAsignarModal(true)}
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                </svg>
-                Asignar suscripción
-              </button>
+          </div>
+
+          {/* Facturación */}
+          <div className="card p-6">
+            <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+              <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" /></svg>
+              Facturación
+            </h3>
+            {!clienteActual.razonSocial && !clienteActual.nif && !clienteActual.direccionFacturacion && !clienteActual.emailFacturacion ? (
+              <p className="text-tn-muted text-sm">Sin datos de facturación. Pulsa <span className="text-tn-yellow">Editar</span> para añadirlos.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {[
+                  { label: 'Razón social', value: clienteActual.razonSocial || '—' },
+                  { label: 'NIF / CIF', value: clienteActual.nif || '—' },
+                  { label: 'Email facturación', value: clienteActual.emailFacturacion || '—' },
+                  { label: 'Dirección fiscal', value: clienteActual.direccionFacturacion || '—' },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-tn-muted text-xs font-medium mb-0.5">{label}</p>
+                    <p className="text-sm font-semibold text-white break-words">{value}</p>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-        ) : (
-          <div className="space-y-2">
-            {missSuscs.map(s => {
-              const cat = catalogo.find(c => c.id === s.catalogoId)
-              const vigente = suscripcionVigente(s)
-              return (
-                <div key={s.id} className={`card p-4 flex items-center gap-4 transition-all ${
-                  vigente ? '' : 'opacity-70 border-red-400/30 bg-red-400/[0.03]'
-                }`}>
-                  {/* Icono tipo */}
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                    cat?.tipo === 'recurrente' ? 'bg-blue-400/10' : 'bg-green-400/10'
-                  }`}>
-                    {cat?.tipo === 'recurrente' ? (
-                      <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
+        </div>
+      )}
 
-                  {/* Info */}
+      {/* ════════════ TAB: SUSCRIPCIONES ════════════ */}
+      {tab === 'suscripciones' && (
+        <div className="space-y-6">
+          {/* Suscripciones */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-white font-bold flex items-center gap-2">
+                <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
+                Suscripciones y productos
+                {missSuscsActivas.length > 0 && (
+                  <span className="text-tn-muted font-normal text-sm">({missSuscsActivas.length} activa{missSuscsActivas.length !== 1 ? 's' : ''})</span>
+                )}
+              </h3>
+              {catalogoDisponible.length > 0 && (
+                <button className="btn-primary flex items-center gap-1.5 text-sm py-2 px-4" onClick={() => setAsignarModal(true)}>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                  Asignar
+                </button>
+              )}
+            </div>
+
+            {missSuscs.length === 0 ? (
+              <div className="card flex flex-col items-center justify-center py-10 text-center">
+                <div className="w-12 h-12 bg-tn-border rounded-xl flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
+                </div>
+                <p className="text-white font-semibold text-sm mb-1">Sin suscripciones</p>
+                <p className="text-tn-muted text-xs mb-4">
+                  {catalogo.length === 0 ? 'Crea suscripciones en el catálogo primero' : 'Asigna una suscripción del catálogo a este cliente'}
+                </p>
+                {catalogoDisponible.length > 0 && (
+                  <button className="btn-primary flex items-center gap-2 text-sm py-2 px-4" onClick={() => setAsignarModal(true)}>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                    Asignar suscripción
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {missSuscs.map(s => {
+                  const cat = catalogo.find(c => c.id === s.catalogoId)
+                  const vigente = suscripcionVigente(s)
+                  return (
+                    <div key={s.id} className={`card p-4 flex items-center gap-4 transition-all ${vigente ? '' : 'opacity-70 border-red-400/30 bg-red-400/[0.03]'}`}>
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${cat?.tipo === 'recurrente' ? 'bg-blue-400/10' : 'bg-green-400/10'}`}>
+                        {cat?.tipo === 'recurrente' ? (
+                          <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-white font-semibold text-sm">{cat?.nombre ?? '—'}</p>
+                          {vigente
+                            ? <span className="badge-active text-xs"><span className="w-1.5 h-1.5 rounded-full bg-green-400" />Vigente</span>
+                            : <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-400/10 text-red-400 inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-400" />{s.activa ? 'Fuera de fecha' : 'Desactivada'}</span>}
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                          {cat?.programas.map(pa => {
+                            const pr = programas.find(p => p.id === pa.programaId)
+                            return pr ? <span key={pa.programaId} className="text-tn-muted text-xs">📋 {pr.nombre}</span> : null
+                          })}
+                          <span className={`text-xs ${vigente ? 'text-tn-muted' : 'text-red-400/80'}`}>{fmtDate(s.fechaInicio)} → {fmtDate(s.fechaFin)}</span>
+                          {cat?.precioMensual ? <span className="text-tn-muted text-xs">{cat.precioMensual} €/mes</span> : null}
+                          {cat?.tipo && <span className={`text-xs font-medium ${cat.tipo === 'recurrente' ? 'text-blue-400' : 'text-green-400'}`}>{cat.tipo === 'recurrente' ? '↻ Recurrente' : '✓ Pago único'}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {esAdmin && (
+                          <button onClick={() => { setEditFechas(s); setNuevoInicio(s.fechaInicio.split('T')[0]); setNuevaFin(s.fechaFin) }}
+                            title="Editar fechas" className="p-2 text-tn-muted hover:text-tn-yellow hover:bg-tn-yellow/5 rounded-lg transition-all">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          </button>
+                        )}
+                        {s.activa && (
+                          <button onClick={() => setQuitarSusc(s.id)} title="Desactivar suscripción" className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                          </button>
+                        )}
+                        <button onClick={() => borrarSuscripcion(s.id)} title="Eliminar" className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Calendarios */}
+          {misCalendarios.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-white font-bold flex items-center gap-2">
+                  <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  Calendarios <span className="text-tn-muted font-normal text-sm">({misCalendarios.length})</span>
+                </h3>
+                {seleccion.size > 0 && (
+                  <button onClick={() => setVistaCombi(true)} className="btn-primary text-sm py-2 px-4 flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+                    Ver combinado ({seleccion.size})
+                  </button>
+                )}
+              </div>
+              {misCalendarios.length > 1 && seleccion.size === 0 && (
+                <p className="text-tn-muted text-xs">Marca varios calendarios para verlos juntos y comprobar el equilibrio semanal.</p>
+              )}
+              <div className="space-y-2">
+                {misCalendarios.map(cal => {
+                  const colorDef = CALENDAR_COLORS.find(c => c.key === cal.colorKey) ?? CALENDAR_COLORS[0]
+                  const checked = seleccion.has(cal.id)
+                  const toggleSeleccion = () => {
+                    const next = new Set(seleccion)
+                    if (checked) next.delete(cal.id); else next.add(cal.id)
+                    setSeleccion(next)
+                  }
+                  return (
+                    <div key={cal.id} onClick={toggleSeleccion}
+                      className={`card p-4 flex items-center justify-between gap-4 transition-all group cursor-pointer border ${checked ? colorDef.cls + ' opacity-100' : 'border-tn-border hover:border-tn-border/80'}`}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${checked ? 'border-transparent' : 'border-tn-border group-hover:border-tn-muted'}`}
+                          style={checked ? { backgroundColor: colorDef.accent, borderColor: colorDef.accent } : {}}>
+                          {checked && <svg className="w-3 h-3 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                        </div>
+                        <div className={`w-8 h-8 rounded-lg ${colorDef.badge} flex items-center justify-center flex-shrink-0`}>
+                          <svg className="w-4 h-4" style={{ color: colorDef.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-white font-semibold text-sm truncate">{cal.programaNombre}</p>
+                          <p className="text-tn-muted text-xs">Desde {fmtFecha(cal.fechaInicio)} · {cal.semanas.length} semanas</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setCalendarioAbierto(cal)} className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          Ver
+                        </button>
+                        <button onClick={() => setBorrarCal(cal)} className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all opacity-0 group-hover:opacity-100" title="Eliminar calendario">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ════════════ TAB: CONTACTOS ════════════ */}
+      {tab === 'contactos' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-white font-bold flex items-center gap-2">
+              <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              Contactos {contactos.length > 0 && <span className="text-tn-muted font-normal text-sm">({contactos.length})</span>}
+            </h3>
+            <button className="btn-primary flex items-center gap-1.5 text-sm py-2 px-4" onClick={() => setContactoEdit('nuevo')}>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+              Nuevo contacto
+            </button>
+          </div>
+
+          {contactos.length === 0 ? (
+            <div className="card flex flex-col items-center justify-center py-12 text-center">
+              <div className="w-12 h-12 bg-tn-border rounded-xl flex items-center justify-center mb-3">
+                <svg className="w-6 h-6 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              </div>
+              <p className="text-white font-semibold text-sm mb-1">Sin contactos</p>
+              <p className="text-tn-muted text-xs">Añade contactos asociados a este cliente (familiares, emergencia, comercial...)</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {contactos.map(c => (
+                <div key={c.id} className="card p-4 flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-tn-border flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-sm font-bold">{(c.nombre[0] ?? '?').toUpperCase()}</span>
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-white font-semibold text-sm">{cat?.nombre ?? '—'}</p>
-                      {vigente
-                        ? <span className="badge-active text-xs"><span className="w-1.5 h-1.5 rounded-full bg-green-400" />Vigente</span>
-                        : <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-400/10 text-red-400 inline-flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                            {s.activa ? 'Fuera de fecha' : 'Desactivada'}
-                          </span>}
+                      <p className="text-white font-semibold text-sm">{c.nombre}</p>
+                      {c.relacion && <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-tn-yellow/10 text-tn-yellow">{c.relacion}</span>}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                      {cat?.programas.map(pa => {
-                        const pr = programas.find(p => p.id === pa.programaId)
-                        return pr ? <span key={pa.programaId} className="text-tn-muted text-xs">📋 {pr.nombre}</span> : null
-                      })}
-                      <span className={`text-xs ${vigente ? 'text-tn-muted' : 'text-red-400/80'}`}>
-                        {fmtDate(s.fechaInicio)} → {fmtDate(s.fechaFin)}
-                      </span>
-                      {cat?.precioMensual ? (
-                        <span className="text-tn-muted text-xs">{cat.precioMensual} €/mes</span>
-                      ) : null}
-                      {cat?.tipo && (
-                        <span className={`text-xs font-medium ${cat.tipo === 'recurrente' ? 'text-blue-400' : 'text-green-400'}`}>
-                          {cat.tipo === 'recurrente' ? '↻ Recurrente' : '✓ Pago único'}
-                        </span>
-                      )}
+                      {c.telefono && <span className="text-tn-muted text-xs">📞 {c.telefono}</span>}
+                      {c.email && <span className="text-tn-muted text-xs">✉ {c.email}</span>}
                     </div>
+                    {c.notas && <p className="text-tn-muted text-xs mt-1 italic">{c.notas}</p>}
                   </div>
-
-                  {/* Acciones */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    {esAdmin && (
-                      <button
-                        onClick={() => { setEditFechas(s); setNuevoInicio(s.fechaInicio.split('T')[0]); setNuevaFin(s.fechaFin) }}
-                        title="Editar fechas"
-                        className="p-2 text-tn-muted hover:text-tn-yellow hover:bg-tn-yellow/5 rounded-lg transition-all"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                    )}
-                    {s.activa && (
-                      <button
-                        onClick={() => setQuitarSusc(s.id)}
-                        title="Desactivar suscripción"
-                        className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                        </svg>
-                      </button>
-                    )}
-                    <button
-                      onClick={() => borrarSuscripcion(s.id)}
-                      title="Eliminar"
-                      className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
+                    <button onClick={() => setContactoEdit(c)} title="Editar" className="p-2 text-tn-muted hover:text-white hover:bg-tn-border rounded-lg transition-all">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    </button>
+                    <button onClick={() => setBorrarContacto(c)} title="Eliminar" className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* ── Modal: asignar suscripción ────────────────────────────────────── */}
+      {/* ════════════ TAB: DINERO ════════════ */}
+      {tab === 'dinero' && (
+        <div className="space-y-4">
+          {/* Resumen */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="card px-5 py-4">
+              <p className="text-tn-muted text-xs font-medium mb-1">Total pagado</p>
+              <p className="text-2xl font-black text-tn-yellow">{totalPagado} €</p>
+            </div>
+            <div className="card px-5 py-4">
+              <p className="text-tn-muted text-xs font-medium mb-1">Pagos registrados</p>
+              <p className="text-2xl font-black text-white">{pagos.length}</p>
+            </div>
+          </div>
+
+          {/* Tabla de pagos */}
+          <div className="card overflow-hidden">
+            <div className="px-5 py-4 border-b border-tn-border">
+              <h3 className="text-white font-bold flex items-center gap-2">
+                <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Pagos por suscripciones
+              </h3>
+            </div>
+            {pagos.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-tn-muted text-sm">Este cliente todavía no tiene pagos registrados</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-tn-border">
+                      {['Fecha', 'Concepto', 'Tipo', 'Importe'].map(h => (
+                        <th key={h} className={`text-tn-muted text-xs font-semibold uppercase tracking-wider px-5 py-3 ${h === 'Importe' ? 'text-right' : 'text-left'}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-tn-border">
+                    {pagos.map(p => (
+                      <tr key={p.id} className="hover:bg-tn-dark/40 transition-colors">
+                        <td className="px-5 py-3 text-tn-muted text-sm whitespace-nowrap">{fmtDate(p.fecha)}</td>
+                        <td className="px-5 py-3 text-white text-sm font-medium">{p.concepto}</td>
+                        <td className="px-5 py-3">
+                          <span className={`text-xs font-medium ${p.tipo === 'recurrente' ? 'text-blue-400' : 'text-green-400'}`}>
+                            {p.tipo === 'recurrente' ? '↻ Recurrente' : '✓ Pago único'}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-right whitespace-nowrap">
+                          {p.gratis
+                            ? <span className="text-tn-muted text-sm italic">Gratis (prueba)</span>
+                            : <span className="text-white font-semibold text-sm">{p.importe} €</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-tn-border bg-tn-dark/30">
+                      <td colSpan={3} className="px-5 py-3 text-tn-muted text-sm font-semibold text-right">Total</td>
+                      <td className="px-5 py-3 text-right text-tn-yellow font-black">{totalPagado} €</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ════════════ MODALES ════════════ */}
+
+      {/* Asignar suscripción */}
       {asignarModal && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="card w-full sm:max-w-md sm:rounded-xl rounded-t-2xl rounded-b-none sm:rounded-b-xl max-h-[80vh] flex flex-col shadow-2xl">
             <div className="flex items-center justify-between p-5 border-b border-tn-border flex-shrink-0">
               <div>
                 <h3 className="text-white font-bold">Asignar suscripción</h3>
-                <p className="text-tn-muted text-xs mt-0.5">
-                  {clienteActual.nombre} {clienteActual.apellido}
-                </p>
+                <p className="text-tn-muted text-xs mt-0.5">{clienteActual.nombre} {clienteActual.apellido}</p>
               </div>
               <button onClick={() => setAsignarModal(false)} className="text-tn-muted hover:text-white p-1 transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {catalogoDisponible.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-tn-muted text-sm">Este cliente ya tiene todas las suscripciones activas</p>
-                </div>
+                <div className="text-center py-8"><p className="text-tn-muted text-sm">Este cliente ya tiene todas las suscripciones activas</p></div>
               ) : (
                 catalogoDisponible.map(cat => {
                   const progsAsoc = cat.programas.map(pa => programas.find(p => p.id === pa.programaId)).filter(Boolean)
                   return (
-                    <button
-                      key={cat.id}
-                      onClick={() => seleccionarCatalogo(cat)}
-                      className="w-full card px-4 py-4 text-left hover:border-tn-yellow transition-all group"
-                    >
+                    <button key={cat.id} onClick={() => seleccionarCatalogo(cat)} className="w-full card px-4 py-4 text-left hover:border-tn-yellow transition-all group">
                       <div className="flex items-start gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                          cat.tipo === 'recurrente' ? 'bg-blue-400/10' : 'bg-green-400/10'
-                        }`}>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${cat.tipo === 'recurrente' ? 'bg-blue-400/10' : 'bg-green-400/10'}`}>
                           {cat.tipo === 'recurrente' ? (
-                            <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
+                            <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                           ) : (
-                            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
+                            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-white font-semibold text-sm group-hover:text-tn-yellow transition-colors">
-                            {cat.nombre}
-                          </p>
+                          <p className="text-white font-semibold text-sm group-hover:text-tn-yellow transition-colors">{cat.nombre}</p>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className={`text-xs font-medium ${cat.tipo === 'recurrente' ? 'text-blue-400' : 'text-green-400'}`}>
-                              {cat.tipo === 'recurrente' ? '↻ Recurrente' : '✓ Pago único'}
-                            </span>
-                            {progsAsoc.map(p => (
-                              <span key={p!.id} className="text-tn-muted text-xs">· {p!.nombre}</span>
-                            ))}
+                            <span className={`text-xs font-medium ${cat.tipo === 'recurrente' ? 'text-blue-400' : 'text-green-400'}`}>{cat.tipo === 'recurrente' ? '↻ Recurrente' : '✓ Pago único'}</span>
+                            {cat.precioMensual ? <span className="text-tn-muted text-xs">{cat.precioMensual} €/mes</span> : null}
+                            {progsAsoc.map(p => <span key={p!.id} className="text-tn-muted text-xs">· {p!.nombre}</span>)}
                           </div>
                         </div>
-                        <svg className="w-4 h-4 text-tn-muted group-hover:text-tn-yellow transition-colors flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
+                        <svg className="w-4 h-4 text-tn-muted group-hover:text-tn-yellow transition-colors flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                       </div>
                     </button>
                   )
                 })
               )}
             </div>
-
             <div className="p-4 border-t border-tn-border flex-shrink-0">
-              <button onClick={() => setAsignarModal(false)} className="btn-secondary w-full">
-                Cancelar
-              </button>
+              <button onClick={() => setAsignarModal(false)} className="btn-secondary w-full">Cancelar</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Calendarios ─────────────────────────────────────────────────── */}
-      {misCalendarios.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-white font-bold flex items-center gap-2">
-              <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Calendarios
-              <span className="text-tn-muted font-normal text-sm">({misCalendarios.length})</span>
-            </h3>
-            {seleccion.size > 0 && (
-              <button
-                onClick={() => setVistaCombi(true)}
-                className="btn-primary text-sm py-2 px-4 flex items-center gap-1.5"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                </svg>
-                Ver combinado ({seleccion.size})
-              </button>
-            )}
-          </div>
-
-          {misCalendarios.length > 1 && seleccion.size === 0 && (
-            <p className="text-tn-muted text-xs">
-              Marca varios calendarios para verlos juntos y comprobar el equilibrio semanal.
-            </p>
-          )}
-
-          <div className="space-y-2">
-            {misCalendarios.map(cal => {
-              const colorDef = CALENDAR_COLORS.find(c => c.key === cal.colorKey) ?? CALENDAR_COLORS[0]
-              const checked = seleccion.has(cal.id)
-              const toggleSeleccion = () => {
-                const next = new Set(seleccion)
-                if (checked) next.delete(cal.id); else next.add(cal.id)
-                setSeleccion(next)
-              }
-              return (
-              <div
-                key={cal.id}
-                onClick={toggleSeleccion}
-                className={`card p-4 flex items-center justify-between gap-4 transition-all group cursor-pointer border ${
-                  checked ? colorDef.cls + ' opacity-100' : 'border-tn-border hover:border-tn-border/80'
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  {/* Checkbox visual */}
-                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-                    checked ? 'border-transparent' : 'border-tn-border group-hover:border-tn-muted'
-                  }`}
-                    style={checked ? { backgroundColor: colorDef.accent, borderColor: colorDef.accent } : {}}
-                  >
-                    {checked && (
-                      <svg className="w-3 h-3 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
-
-                  <div className={`w-8 h-8 rounded-lg ${colorDef.badge} flex items-center justify-center flex-shrink-0`}>
-                    <svg className="w-4 h-4" style={{ color: colorDef.accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-white font-semibold text-sm truncate">{cal.programaNombre}</p>
-                    <p className="text-tn-muted text-xs">
-                      Desde {fmtFecha(cal.fechaInicio)} · {cal.semanas.length} semanas
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                  <button
-                    onClick={() => setCalendarioAbierto(cal)}
-                    className="btn-secondary text-sm py-2 px-3 flex items-center gap-1.5"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                    Ver
-                  </button>
-                  <button
-                    onClick={() => setBorrarCal(cal)}
-                    className="p-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                    title="Eliminar calendario"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Modal: elegir lunes para suscripción recurrente ─────────────── */}
+      {/* Elegir lunes para recurrente */}
       {catPendiente && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="card w-full max-w-sm p-6 space-y-5 shadow-2xl">
             <div>
               <h3 className="text-white font-bold text-lg">Fecha de inicio</h3>
-              <p className="text-tn-muted text-sm mt-0.5">
-                Suscripción: <span className="text-white font-medium">{catPendiente.nombre}</span>
-              </p>
+              <p className="text-tn-muted text-sm mt-0.5">Suscripción: <span className="text-white font-medium">{catPendiente.nombre}</span></p>
             </div>
-
-            <LunesPicker
-              value={fechaPendiente}
-              onChange={setFechaPendiente}
-              label="Lunes de inicio *"
-              hint="El programa comenzará en este lunes para este cliente"
-            />
-
+            <LunesPicker value={fechaPendiente} onChange={setFechaPendiente} label="Lunes de inicio *" hint="El programa comenzará en este lunes para este cliente" />
             <div className="bg-tn-yellow/5 border border-tn-yellow/20 rounded-xl p-3">
-              <p className="text-tn-yellow/80 text-xs">
-                El calendario personal del cliente se generará automáticamente a partir de este lunes.
-              </p>
+              <p className="text-tn-yellow/80 text-xs">El calendario personal del cliente se generará automáticamente a partir de este lunes.</p>
             </div>
-
             <div className="flex gap-3">
               <button className="btn-secondary flex-1" onClick={() => setCatPendiente(null)}>Cancelar</button>
-              <button
-                className="btn-primary flex-1"
-                disabled={!fechaPendiente}
-                onClick={confirmarRecurrente}
-              >
-                Asignar y crear calendario
-              </button>
+              <button className="btn-primary flex-1" disabled={!fechaPendiente} onClick={confirmarRecurrente}>Asignar y crear calendario</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Confirm borrar calendario ────────────────────────────────────── */}
+      {/* Confirm borrar calendario */}
       {borrarCal && (
-        <ConfirmDialog
-          title="Eliminar calendario"
+        <ConfirmDialog title="Eliminar calendario"
           description={`¿Eliminar el calendario "${borrarCal.programaNombre}"? Se perderán todos los entrenamientos personalizados.`}
           confirmLabel="Eliminar"
           onConfirm={() => { borrarCalendario(borrarCal.id); setBorrarCal(null) }}
-          onCancel={() => setBorrarCal(null)}
-        />
+          onCancel={() => setBorrarCal(null)} />
       )}
 
-      {/* ── Confirm desactivar suscripción ───────────────────────────────── */}
+      {/* Confirm desactivar suscripción */}
       {quitarSusc && (
-        <ConfirmDialog
-          title="Desactivar suscripción"
+        <ConfirmDialog title="Desactivar suscripción"
           description="¿Desactivar esta suscripción? El cliente perderá acceso al programa asociado."
           confirmLabel="Desactivar"
           onConfirm={() => { desactivarSuscripcion(quitarSusc); setQuitarSusc(null) }}
-          onCancel={() => setQuitarSusc(null)}
-        />
+          onCancel={() => setQuitarSusc(null)} />
       )}
 
-      {/* ── Modal editar cliente ─────────────────────────────────────────── */}
-      {editModal && (
-        <ClienteModal
-          cliente={clienteActual}
-          onClose={() => setEditModal(false)}
-        />
-      )}
+      {/* Editar cliente */}
+      {editModal && <ClienteModal cliente={clienteActual} onClose={() => setEditModal(false)} />}
 
-      {/* ── Modal: editar fechas (solo admin) ────────────────────────────── */}
+      {/* Editar fechas suscripción */}
       {editFechas && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className="card w-full max-w-sm p-6 space-y-5 shadow-2xl">
             <div>
               <h3 className="text-white font-bold text-lg">Editar fechas</h3>
-              <p className="text-tn-muted text-sm mt-0.5">
-                {catalogo.find(c => c.id === editFechas.catalogoId)?.nombre ?? 'Suscripción'}
-              </p>
+              <p className="text-tn-muted text-sm mt-0.5">{catalogo.find(c => c.id === editFechas.catalogoId)?.nombre ?? 'Suscripción'}</p>
             </div>
-
             <div>
               <label className="label">Fecha de inicio</label>
-              <input
-                type="date"
-                className="input-field"
-                value={nuevoInicio}
-                onChange={e => setNuevoInicio(e.target.value)}
-              />
+              <input type="date" className="input-field" value={nuevoInicio} onChange={e => setNuevoInicio(e.target.value)} />
             </div>
-
             <div>
               <label className="label">Fecha de fin</label>
-              <input
-                type="date"
-                className="input-field"
-                value={nuevaFin}
-                min={nuevoInicio}
-                onChange={e => setNuevaFin(e.target.value)}
-              />
+              <input type="date" className="input-field" value={nuevaFin} min={nuevoInicio} onChange={e => setNuevaFin(e.target.value)} />
             </div>
-
             {nuevoInicio && nuevaFin && nuevaFin < nuevoInicio && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-sm">
-                La fecha de fin no puede ser anterior a la de inicio
-              </div>
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-sm">La fecha de fin no puede ser anterior a la de inicio</div>
             )}
-
             <div className="flex gap-3">
               <button className="btn-secondary flex-1" onClick={() => setEditFechas(null)}>Cancelar</button>
-              <button
-                className="btn-primary flex-1"
-                disabled={!nuevoInicio || !nuevaFin || nuevaFin < nuevoInicio}
+              <button className="btn-primary flex-1" disabled={!nuevoInicio || !nuevaFin || nuevaFin < nuevoInicio}
                 onClick={() => {
-                  // Conservar la hora original del inicio si solo cambia el día
-                  const horaOriginal = editFechas.fechaInicio.includes('T')
-                    ? editFechas.fechaInicio.split('T')[1]
-                    : '00:00:00.000Z'
-                  const inicioISO = `${nuevoInicio}T${horaOriginal}`
-                  editarFechas(editFechas.id, inicioISO, nuevaFin)
+                  const horaOriginal = editFechas.fechaInicio.includes('T') ? editFechas.fechaInicio.split('T')[1] : '00:00:00.000Z'
+                  editarFechas(editFechas.id, `${nuevoInicio}T${horaOriginal}`, nuevaFin)
                   setEditFechas(null)
-                }}
-              >
+                }}>
                 Guardar
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Modal contacto (crear/editar) */}
+      {contactoEdit && (
+        <ContactoModal
+          contacto={contactoEdit === 'nuevo' ? null : contactoEdit}
+          onGuardar={guardarContacto}
+          onCancelar={() => setContactoEdit(null)}
+        />
+      )}
+
+      {/* Confirm borrar contacto */}
+      {borrarContacto && (
+        <ConfirmDialog title="Eliminar contacto"
+          description={`¿Eliminar a "${borrarContacto.nombre}" de los contactos del cliente?`}
+          confirmLabel="Eliminar"
+          onConfirm={() => eliminarContacto(borrarContacto.id)}
+          onCancel={() => setBorrarContacto(null)} />
+      )}
+    </div>
+  )
+}
+
+// ─── Modal de contacto ──────────────────────────────────────────────────────
+function ContactoModal({ contacto, onGuardar, onCancelar }: {
+  contacto: ContactoCliente | null
+  onGuardar: (c: ContactoCliente) => void
+  onCancelar: () => void
+}) {
+  const [nombre, setNombre]     = useState(contacto?.nombre ?? '')
+  const [relacion, setRelacion] = useState(contacto?.relacion ?? '')
+  const [telefono, setTelefono] = useState(contacto?.telefono ?? '')
+  const [email, setEmail]       = useState(contacto?.email ?? '')
+  const [notas, setNotas]       = useState(contacto?.notas ?? '')
+  const [error, setError]       = useState('')
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    if (!nombre.trim()) return setError('El nombre es obligatorio')
+    onGuardar({
+      id: contacto?.id ?? genId(),
+      nombre: nombre.trim(), relacion: relacion.trim(),
+      telefono: telefono.trim(), email: email.trim(), notas: notas.trim(),
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="card w-full sm:max-w-md sm:rounded-xl rounded-t-2xl rounded-b-none sm:rounded-b-xl max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-6 border-b border-tn-border">
+          <h3 className="text-white font-bold text-lg">{contacto ? 'Editar contacto' : 'Nuevo contacto'}</h3>
+          <button onClick={onCancelar} className="text-tn-muted hover:text-white p-1 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Nombre *</label>
+              <input type="text" className="input-field" placeholder="Nombre" value={nombre} onChange={e => setNombre(e.target.value)} autoFocus required />
+            </div>
+            <div>
+              <label className="label">Relación</label>
+              <input type="text" className="input-field" placeholder="Familiar, Emergencia..." value={relacion} onChange={e => setRelacion(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Teléfono</label>
+              <input type="tel" className="input-field" placeholder="+34 600 000 000" value={telefono} onChange={e => setTelefono(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Email</label>
+              <input type="email" className="input-field" placeholder="correo@ejemplo.com" value={email} onChange={e => setEmail(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="label">Notas</label>
+            <textarea className="input-field resize-none h-20" placeholder="Notas opcionales..." value={notas} onChange={e => setNotas(e.target.value)} />
+          </div>
+          {error && <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">{error}</div>}
+          <div className="flex gap-3 pt-1">
+            <button type="button" className="btn-secondary flex-1" onClick={onCancelar}>Cancelar</button>
+            <button type="submit" className="btn-primary flex-1">{contacto ? 'Guardar' : 'Añadir contacto'}</button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
