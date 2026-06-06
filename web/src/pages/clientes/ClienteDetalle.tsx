@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion, type SuscripcionCliente, CALENDAR_COLORS } from '../../types'
 import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
-import { useCalendarios, fmtFecha, siguienteLunes } from '../../context/CalendariosContext'
+import { useCalendarios, fmtFecha, siguienteLunes, addDays } from '../../context/CalendariosContext'
 import { usePermisos } from '../../hooks/usePermisos'
 import ClienteModal from '../../components/clientes/ClienteModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -60,11 +60,13 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   )
 
   /** Crea calendarios para todos los programas de una suscripción recién asignada.
-   *  Para recurrentes filtra: solo programas cuya fecha de inicio sea del mes en curso o posterior. */
+   *  Recurrentes: se asigna el programa COMPLETO (desde su fecha de inicio) de cada
+   *  programa cuya ventana de validez [inicio, inicio + semanas) cubra la fecha de
+   *  compra (hoy), más todos los que empiecen en el futuro. Se descartan solo los
+   *  que ya terminaron antes de la compra. */
   const crearCalendariosParaCat = (cat: CatalogoSuscripcion, scId: string, fechaOverride?: string) => {
-    // Inicio del mes actual (día 1)
-    const hoy = new Date()
-    const inicioMesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`
+    const ahora = new Date()
+    const hoyISO = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
 
     cat.programas.forEach(pa => {
       const programa = programas.find(p => p.id === pa.programaId)
@@ -78,8 +80,11 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
         if (!pa.fechaInicio) {
           fecha = siguienteLunes()
         } else {
-          // Filtrar: si la fecha es anterior al mes en curso, no crear este calendario
-          if (pa.fechaInicio < inicioMesActual) return
+          // Último día planificado del programa: inicio + (semanas * 7) - 1
+          const finPrograma = addDays(pa.fechaInicio, programa.semanas.length * 7 - 1)
+          // Si el programa ya terminó antes de la compra → no asignar
+          if (finPrograma < hoyISO) return
+          // Si no, asignar el programa COMPLETO desde su fecha de inicio original
           fecha = pa.fechaInicio
         }
       } else {

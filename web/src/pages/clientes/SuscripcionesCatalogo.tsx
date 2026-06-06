@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useClientes } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
-import { useCalendarios } from '../../context/CalendariosContext'
+import { useCalendarios, addDays } from '../../context/CalendariosContext'
 import { type CatalogoSuscripcion, type ProgramaAsociado } from '../../types'
 import SuscripcionCatalogoModal from '../../components/clientes/SuscripcionCatalogoModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -23,12 +23,20 @@ export default function SuscripcionesCatalogo() {
   const [borrando, setBorrando]   = useState<CatalogoSuscripcion | null>(null)
 
   /** Tras guardar, crea calendarios para programas recurrentes a clientes activos.
-   *  Filtra: solo programas con fechaInicio del mes en curso o posterior. */
+   *  Se incluyen los programas cuya ventana [inicio, inicio + semanas) cubra hoy
+   *  (programa completo desde su inicio) y los que empiecen en el futuro. Se
+   *  descartan solo los que ya terminaron. */
   const handleSaved = useCallback((catalogoId: string, progsGuardados: ProgramaAsociado[]) => {
-    const hoy = new Date()
-    const inicioMesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`
+    const ahora = new Date()
+    const hoyISO = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
 
-    const aPlanificar = progsGuardados.filter(p => p.fechaInicio && p.fechaInicio >= inicioMesActual)
+    const aPlanificar = progsGuardados.filter(pa => {
+      if (!pa.fechaInicio) return false
+      const programa = programas.find(p => p.id === pa.programaId)
+      if (!programa) return false
+      const finPrograma = addDays(pa.fechaInicio, programa.semanas.length * 7 - 1)
+      return finPrograma >= hoyISO   // aún no ha terminado
+    })
     if (!aPlanificar.length) return
 
     const suscsActivas = suscripciones.filter(s => s.catalogoId === catalogoId && s.activa)
