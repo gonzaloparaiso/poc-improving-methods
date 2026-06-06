@@ -75,6 +75,7 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
       const gratis = cat.primerMesPrueba || (cat.precioMensual ?? 0) === 0
       return {
         id: s.id,
+        catalogoId: cat.id,
         fecha: s.fechaInicio,
         concepto: cat.nombre,
         tipo: cat.tipo as 'unico' | 'recurrente',
@@ -85,7 +86,37 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     .filter((p): p is NonNullable<typeof p> => p !== null)
     .sort((a, b) => b.fecha.localeCompare(a.fecha))
 
+  // Lifetime value = suma histórica de todo lo pagado
   const totalPagado = pagos.reduce((acc, p) => acc + p.importe, 0)
+  // Precio medio mensual = media de los pagos no gratuitos
+  const pagosConCoste = pagos.filter(p => !p.gratis)
+  const precioMedioMensual = pagosConCoste.length
+    ? Math.round(totalPagado / pagosConCoste.length)
+    : 0
+
+  // Color estable por catálogo (para diferenciar visualmente cada suscripción)
+  const catalogosEnPagos = [...new Set(pagos.map(p => p.catalogoId))]
+  const colorDeCatalogo = (catId: string) =>
+    CALENDAR_COLORS[catalogosEnPagos.indexOf(catId) % CALENDAR_COLORS.length]
+
+  // ── Recomendación: producto más probable que compre ahora ──────────────────
+  // Heurística: popularidad de cada catálogo entre TODOS los clientes (suscs activas),
+  // excluyendo los que este cliente ya tiene activos, la prueba 'Test' y los gratuitos.
+  const popularidad: Record<string, number> = {}
+  suscripciones.filter(s => s.activa).forEach(s => {
+    popularidad[s.catalogoId] = (popularidad[s.catalogoId] ?? 0) + 1
+  })
+  const yaActivos = new Set(missSuscsActivas.map(s => s.catalogoId))
+  const candidatos = catalogo
+    .filter(c => !yaActivos.has(c.id) && c.nombre !== 'Test' && (c.precioMensual ?? 0) > 0)
+    .sort((a, b) =>
+      (popularidad[b.id] ?? 0) - (popularidad[a.id] ?? 0) ||
+      (b.precioMensual ?? 0) - (a.precioMensual ?? 0))
+  const recomendado = candidatos[0] ?? null
+  const totalActivasGlobal = Object.values(popularidad).reduce((a, b) => a + b, 0) || 1
+  const afinidad = recomendado
+    ? Math.min(96, Math.max(42, Math.round(((popularidad[recomendado.id] ?? 0) / totalActivasGlobal) * 100) + 42))
+    : 0
 
   // ── Calendarios ──────────────────────────────────────────────────────────────
   const crearCalendariosParaCat = (cat: CatalogoSuscripcion, scId: string, fechaOverride?: string) => {
@@ -497,17 +528,66 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
       {/* ════════════ TAB: DINERO ════════════ */}
       {tab === 'dinero' && (
         <div className="space-y-4">
-          {/* Resumen */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="card px-5 py-4">
-              <p className="text-tn-muted text-xs font-medium mb-1">Total pagado</p>
-              <p className="text-2xl font-black text-tn-yellow">{totalPagado} €</p>
+          {/* Métricas */}
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Lifetime value */}
+            <div className="card px-5 py-4 relative overflow-hidden">
+              <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-tn-yellow/10" />
+              <p className="text-tn-muted text-xs font-medium mb-1 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                Lifetime value
+              </p>
+              <p className="text-2xl font-black text-tn-yellow relative">{totalPagado} €</p>
+              <p className="text-tn-muted/60 text-xs mt-0.5 relative">Total histórico pagado</p>
             </div>
+            {/* Precio medio mensual */}
             <div className="card px-5 py-4">
-              <p className="text-tn-muted text-xs font-medium mb-1">Pagos registrados</p>
+              <p className="text-tn-muted text-xs font-medium mb-1 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
+                Precio medio mensual
+              </p>
+              <p className="text-2xl font-black text-white">{precioMedioMensual} €</p>
+              <p className="text-tn-muted/60 text-xs mt-0.5">Media por suscripción</p>
+            </div>
+            {/* Pagos */}
+            <div className="card px-5 py-4 col-span-2 lg:col-span-1">
+              <p className="text-tn-muted text-xs font-medium mb-1 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Pagos registrados
+              </p>
               <p className="text-2xl font-black text-white">{pagos.length}</p>
+              <p className="text-tn-muted/60 text-xs mt-0.5">{missSuscsActivas.length} activa{missSuscsActivas.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
+
+          {/* Recomendación: próxima compra probable */}
+          {recomendado && (
+            <div className="card p-5 relative overflow-hidden border-tn-yellow/30">
+              <div className="absolute inset-0 bg-gradient-to-r from-tn-yellow/[0.07] to-transparent pointer-events-none" />
+              <div className="flex items-center justify-between gap-4 flex-wrap relative">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-xl bg-tn-yellow/15 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider">Próxima compra probable</p>
+                    <p className="text-white font-black text-lg truncate">{recomendado.nombre}</p>
+                    <p className="text-tn-muted text-xs">
+                      {recomendado.precioMensual} €{recomendado.tipo === 'recurrente' ? '/mes' : ' · pago único'}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-tn-yellow font-black text-2xl">{afinidad}%</p>
+                  <p className="text-tn-muted text-xs">afinidad</p>
+                </div>
+              </div>
+              {/* Barra de afinidad */}
+              <div className="mt-3 h-1.5 bg-tn-border rounded-full overflow-hidden relative">
+                <div className="h-full bg-tn-yellow rounded-full transition-all" style={{ width: `${afinidad}%` }} />
+              </div>
+            </div>
+          )}
 
           {/* Tabla de pagos */}
           <div className="card overflow-hidden">
@@ -532,22 +612,30 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-tn-border">
-                    {pagos.map(p => (
-                      <tr key={p.id} className="hover:bg-tn-dark/40 transition-colors">
-                        <td className="px-5 py-3 text-tn-muted text-sm whitespace-nowrap">{fmtDate(p.fecha)}</td>
-                        <td className="px-5 py-3 text-white text-sm font-medium">{p.concepto}</td>
-                        <td className="px-5 py-3">
-                          <span className={`text-xs font-medium ${p.tipo === 'recurrente' ? 'text-blue-400' : 'text-green-400'}`}>
-                            {p.tipo === 'recurrente' ? '↻ Recurrente' : '✓ Pago único'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-right whitespace-nowrap">
-                          {p.gratis
-                            ? <span className="text-tn-muted text-sm italic">Gratis (prueba)</span>
-                            : <span className="text-white font-semibold text-sm">{p.importe} €</span>}
-                        </td>
-                      </tr>
-                    ))}
+                    {pagos.map(p => {
+                      const color = colorDeCatalogo(p.catalogoId)
+                      return (
+                        <tr key={p.id} className="hover:bg-tn-dark/40 transition-colors">
+                          <td className="px-5 py-3 text-tn-muted text-sm whitespace-nowrap">{fmtDate(p.fecha)}</td>
+                          <td className="px-5 py-3">
+                            <span className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color.accent }} />
+                              <span className="text-white text-sm font-medium">{p.concepto}</span>
+                            </span>
+                          </td>
+                          <td className="px-5 py-3">
+                            <span className={`text-xs font-medium ${p.tipo === 'recurrente' ? 'text-blue-400' : 'text-green-400'}`}>
+                              {p.tipo === 'recurrente' ? '↻ Recurrente' : '✓ Pago único'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-right whitespace-nowrap">
+                            {p.gratis
+                              ? <span className="text-tn-muted text-sm italic">Gratis (prueba)</span>
+                              : <span className="font-semibold text-sm" style={{ color: color.accent }}>{p.importe} €</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-tn-border bg-tn-dark/30">
