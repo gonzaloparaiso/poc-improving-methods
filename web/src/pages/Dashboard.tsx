@@ -22,9 +22,13 @@ interface Tarea {
   tipo: string
   titulo: string
   detalle: string
+  fecha: string   // fecha de referencia (para ordenar desc)
 }
 
-const PRIO_ORDER: Record<Prioridad, number> = { alta: 0, media: 1, baja: 2 }
+const KEY_COMPLETADAS = 'im_tareas_completadas'
+function loadCompletadas(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(KEY_COMPLETADAS) ?? '{}') } catch { return {} }
+}
 const PRIO_STYLE: Record<Prioridad, { dot: string; label: string; cls: string }> = {
   alta:  { dot: 'bg-red-400',    label: 'Alta',  cls: 'text-red-400' },
   media: { dot: 'bg-tn-yellow',  label: 'Media', cls: 'text-tn-yellow' },
@@ -37,8 +41,19 @@ export default function Dashboard() {
   const [busqueda, setBusqueda] = useState('')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
+  const [completadas, setCompletadas] = useState<Record<string, string>>(loadCompletadas)
 
   const HOY = hoyISO()
+
+  const toggleTarea = (id: string) => {
+    setCompletadas(prev => {
+      const next = { ...prev }
+      if (next[id]) delete next[id]
+      else next[id] = new Date().toISOString()
+      localStorage.setItem(KEY_COMPLETADAS, JSON.stringify(next))
+      return next
+    })
+  }
 
   // Filtro por fecha de compra (fechaInicio de la suscripción)
   const enRango = (iso: string) => {
@@ -80,6 +95,7 @@ export default function Dashboard() {
         tipo: esTest ? 'Fin de prueba' : 'Renovación',
         titulo: esTest ? `Termina la prueba de ${nombre}` : `Renovación próxima · ${nombre}`,
         detalle: `${cat.nombre} ${dias === 0 ? 'caduca hoy' : `caduca en ${dias} día${dias !== 1 ? 's' : ''}`} (${fmtDate(s.fechaFin)})`,
+        fecha: s.fechaFin,
       })
     } else if (dias < 0 && dias >= -30 && !esTest) {
       tareas.push({
@@ -88,6 +104,7 @@ export default function Dashboard() {
         tipo: 'Caducada',
         titulo: `Renovar suscripción · ${nombre}`,
         detalle: `${cat.nombre} caducó el ${fmtDate(s.fechaFin)} — contactar para renovar`,
+        fecha: s.fechaFin,
       })
     }
   })
@@ -105,11 +122,17 @@ export default function Dashboard() {
         tipo: 'Seguimiento',
         titulo: `Contactar a ${cli.nombre} ${cli.apellido}`.trim(),
         detalle: `Cliente recurrente desde hace ${Math.round(dias / 30)} meses · seguimiento de fidelización`,
+        fecha: cli.creadoEn,
       })
     }
   })
-  tareas.sort((a, b) => PRIO_ORDER[a.prioridad] - PRIO_ORDER[b.prioridad])
-  const tareasTop = tareas.slice(0, 12)
+  // Ocultar las completadas hace 2 días o más; ordenar por fecha descendente
+  const tareasVisibles = tareas.filter(t => {
+    const done = completadas[t.id]
+    return !done || diasEntre(done, new Date().toISOString()) < 2
+  })
+  tareasVisibles.sort((a, b) => b.fecha.localeCompare(a.fecha))
+  const tareasTop = tareasVisibles.slice(0, 12)
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -244,17 +267,34 @@ export default function Dashboard() {
           <div className="space-y-2">
             {tareasTop.map(t => {
               const st = PRIO_STYLE[t.prioridad]
+              const hecha = Boolean(completadas[t.id])
               return (
-                <div key={t.id} className="card p-4 flex items-center gap-4">
-                  <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${st.dot}`} />
+                <div key={t.id} className={`card p-4 flex items-center gap-4 transition-all ${hecha ? 'opacity-50' : ''}`}>
+                  {/* Checkbox */}
+                  <button
+                    onClick={() => toggleTarea(t.id)}
+                    title={hecha ? 'Marcar como pendiente' : 'Marcar como hecha'}
+                    className={`w-6 h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                      hecha ? 'bg-green-400 border-green-400' : 'border-tn-border hover:border-tn-yellow'
+                    }`}
+                  >
+                    {hecha && (
+                      <svg className="w-4 h-4 text-tn-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                  {!hecha && <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${st.dot}`} />}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-white font-semibold text-sm">{t.titulo}</p>
+                      <p className={`font-semibold text-sm ${hecha ? 'text-tn-muted line-through' : 'text-white'}`}>{t.titulo}</p>
                       <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-tn-border/50 text-tn-muted">{t.tipo}</span>
                     </div>
                     <p className="text-tn-muted text-xs mt-0.5">{t.detalle}</p>
                   </div>
-                  <span className={`text-xs font-semibold ${st.cls} flex-shrink-0`}>{st.label}</span>
+                  {hecha
+                    ? <span className="text-xs font-semibold text-green-400 flex-shrink-0">Hecha</span>
+                    : <span className={`text-xs font-semibold ${st.cls} flex-shrink-0`}>{st.label}</span>}
                 </div>
               )
             })}
