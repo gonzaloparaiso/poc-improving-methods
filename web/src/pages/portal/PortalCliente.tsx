@@ -116,6 +116,13 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
     .map(s => ({ susc: s, cat: catalogo.find(c => c.id === s.catalogoId) }))
     .filter(x => x.cat)
 
+  // Suscripciones caducadas: recurrentes del cliente que ya NO conceden acceso
+  const misSuscripcionesCaducadas = suscripciones
+    .filter(s => s.clienteId === cliente.id && !suscConcedeAcceso(s))
+    .map(s => ({ susc: s, cat: catalogo.find(c => c.id === s.catalogoId) }))
+    .filter(x => x.cat && x.cat.tipo === 'recurrente')
+    .sort((a, b) => b.susc.fechaFin.localeCompare(a.susc.fechaFin)) // más reciente primero
+
   // Selección de calendarios — por defecto todos los vigentes seleccionados
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
     () => new Set(miscalendarios.map(c => c.id))
@@ -708,6 +715,60 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
         {seleccionados.size === 0 && (
           <div className="card py-10 text-center">
             <p className="text-tn-muted text-sm">Selecciona al menos un programa para ver tu entrenamiento</p>
+          </div>
+        )}
+
+        {/* Suscripciones caducadas (histórico) */}
+        {misSuscripcionesCaducadas.length > 0 && (
+          <div className="pt-4 mt-4 border-t border-tn-border space-y-3">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider">
+                Suscripciones caducadas
+              </p>
+            </div>
+            <div className="space-y-2">
+              {misSuscripcionesCaducadas.map(({ susc, cat }) => (
+                <div
+                  key={susc.id}
+                  className="card p-4 flex items-center justify-between gap-4 flex-wrap opacity-75 hover:opacity-100 transition-opacity"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-tn-border/40 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-5 h-5 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-tn-light font-bold text-sm truncate">{cat!.nombre}</p>
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-tn-border/50 text-tn-muted">
+                          Caducada
+                        </span>
+                      </div>
+                      <p className="text-tn-muted text-xs">
+                        Caducó el {fmtFecha(susc.fechaFin)}
+                        {cat!.precioMensual ? ` · ${cat!.precioMensual} €/mes` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Reactivar{cat!.precioMensual ? ` por ${cat!.precioMensual} €` : ''}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </main>
