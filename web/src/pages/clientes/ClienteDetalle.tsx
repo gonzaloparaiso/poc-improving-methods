@@ -510,9 +510,23 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                     </div>
                     {c.notas && <p className="text-tn-muted text-xs mt-1 italic">{c.notas}</p>}
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
+                    <button title="Iniciar onboarding (próximamente)"
+                      className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap">
+                      <svg className="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Iniciar onboarding
+                    </button>
+                    <button title="Iniciar contacto (próximamente)"
+                      className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap">
+                      <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                      </svg>
+                      Iniciar contacto
+                    </button>
                     <button title="Contactar con ScaleX (próximamente)"
-                      className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap mr-1">
+                      className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 whitespace-nowrap">
                       <svg className="w-3.5 h-3.5 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 3v-3z" />
                       </svg>
