@@ -41,6 +41,9 @@ const KEY_CLIENTES    = 'im_clientes'
 const KEY_CATALOGO    = 'im_suscripciones_catalogo'
 const KEY_SUSCS       = 'im_suscripciones_clientes'
 
+/** Nombre del catálogo de suscripción de prueba que se asigna a cada cliente nuevo */
+const NOMBRE_TEST = 'Test'
+
 function load<T>(key: string, fallback: T): T {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback }
   catch { return fallback }
@@ -101,7 +104,40 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
   const crearCliente = useCallback((data: Omit<Cliente, 'id' | 'creadoEn' | 'bajaEn' | 'suscripcionesIds'>) => {
     const nuevo: Cliente = { ...data, id: genId(), creadoEn: new Date().toISOString(), bajaEn: null, suscripcionesIds: [] }
     updClientes([...clientes, nuevo])
-  }, [clientes, updClientes])
+
+    // ── Suscripción "Test" automática: 1 semana de duración ──
+    // 1) Asegurar que existe el catálogo "Test" (lectura fresca para evitar duplicados)
+    const catActual = (load(KEY_CATALOGO, []) as Record<string, unknown>[]).map(migrarCatalogo)
+    let test = catActual.find(c => c.nombre === NOMBRE_TEST)
+    if (!test) {
+      test = {
+        id: genId(),
+        nombre: NOMBRE_TEST,
+        programas: [],
+        tipo: 'recurrente',
+        precioMensual: 0,
+        primerMesPrueba: true,
+        creadoEn: new Date().toISOString(),
+      }
+      updCatalogo([...catActual, test])
+    }
+
+    // 2) Crear la suscripción Test para el nuevo cliente (hoy → hoy + 7 días)
+    const inicio = new Date()
+    const fin = new Date(inicio)
+    fin.setDate(fin.getDate() + 7)
+    const finISO = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}-${String(fin.getDate()).padStart(2, '0')}`
+    const suscTest: SuscripcionCliente = {
+      id: genId(),
+      catalogoId: test.id,
+      clienteId: nuevo.id,
+      fechaInicio: inicio.toISOString(),
+      fechaFin: finISO,
+      activa: true,
+    }
+    const suscsActuales = load<SuscripcionCliente[]>(KEY_SUSCS, [])
+    updSuscs([...suscsActuales, suscTest])
+  }, [clientes, updClientes, updCatalogo, updSuscs])
 
   const editarCliente = useCallback((id: string, data: Partial<Omit<Cliente, 'id' | 'creadoEn' | 'suscripcionesIds'>>) => {
     updClientes(clientes.map(c => {
