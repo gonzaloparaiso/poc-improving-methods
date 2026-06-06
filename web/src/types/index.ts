@@ -23,6 +23,7 @@ export interface Usuario {
 
 // ─── Permisos ─────────────────────────────────────────────────────────────────
 export type Seccion =
+  | 'dashboard'
   | 'administracion'
   | 'clientes'
   | 'suscripciones'
@@ -35,6 +36,7 @@ export type MatrizPermisos = Partial<Record<Seccion, Accion[]>>
 
 export const PERMISOS: Record<Rol, MatrizPermisos> = {
   administrador: {
+    dashboard:       ['ver'],
     administracion:  ['ver', 'crear', 'editar', 'borrar'],
     clientes:        ['ver', 'crear', 'editar', 'borrar'],
     suscripciones:   ['ver', 'crear', 'editar', 'borrar'],
@@ -42,12 +44,14 @@ export const PERMISOS: Record<Rol, MatrizPermisos> = {
     entrenamientos:  ['ver', 'crear', 'editar', 'borrar'],
   },
   head_coach: {
+    dashboard:       ['ver'],
     clientes:        ['ver'],
     suscripciones:   ['ver'],
     planificaciones: ['ver', 'crear', 'editar', 'borrar'],
     entrenamientos:  ['ver', 'crear', 'editar', 'borrar'],
   },
   coach: {
+    dashboard:       ['ver'],
     clientes:        ['ver'],
     suscripciones:   ['ver'],
     planificaciones: ['ver', 'crear', 'editar'],

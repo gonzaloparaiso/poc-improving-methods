@@ -9,6 +9,7 @@ import { usePermisos } from './hooks/usePermisos'
 import { type Seccion, type Cliente } from './types'
 import Login from './pages/Login'
 import Layout from './components/Layout'
+import Dashboard from './pages/Dashboard'
 import Administracion from './pages/Administracion'
 import Clientes from './pages/Clientes'
 import Suscripciones from './pages/Suscripciones'
@@ -99,6 +100,9 @@ function App() {
                   <Layout user={user} onLogout={logoutStaff}>
                     <Routes>
                       <Route path="/" element={<HomeRedirect />} />
+                      <Route path="/dashboard" element={
+                        <Guard seccion="dashboard"><Dashboard /></Guard>
+                      } />
                       <Route path="/administracion" element={
                         <Guard seccion="administracion"><Administracion /></Guard>
                       } />
