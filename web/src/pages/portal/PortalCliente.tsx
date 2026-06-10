@@ -793,11 +793,7 @@ function Header({ cliente, onLogout }: { cliente: Cliente; onLogout: () => void 
   return (
     <header className="bg-tn-dark border-b border-tn-border px-4 lg:px-8 py-4 flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 bg-tn-yellow rounded-lg flex items-center justify-center">
-          <svg className="w-5 h-5 text-tn-black" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </div>
+        <img src="/tn-logo.png" alt="Training Norte" className="w-10 h-10 object-contain" />
         <div className="hidden sm:block">
           <p className="text-white font-bold text-sm leading-tight">Improving Methods</p>
           <p className="text-tn-muted text-xs">Training Norte</p>
