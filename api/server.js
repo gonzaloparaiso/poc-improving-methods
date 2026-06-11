@@ -1,15 +1,19 @@
-// API de Improving Methods — almacén clave-valor con persistencia en disco.
-// Sin dependencias externas: Node puro. Las "colecciones" son las mismas claves
-// que el frontend usaba en localStorage; el navegador queda como caché local.
+// API de Improving Methods — persistencia en SQLite (node:sqlite, integrado en Node 22).
+// Mantiene el mismo contrato HTTP que la versión anterior (clave-valor por colección)
+// pero cada colección es una tabla con UNA FILA POR REGISTRO, transaccional y consultable.
+// Arrancar con:  node --experimental-sqlite server.js
 const http = require('http')
 const fs = require('fs')
 const path = require('path')
+const { DatabaseSync } = require('node:sqlite')
 
 const PORT = process.env.PORT || 3001
-const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json')
-const MAX_BODY = 30 * 1024 * 1024 // 30MB (los adjuntos PDF van en base64)
+const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'data.db')
+const JSON_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json') // solo para migración inicial
+const MAX_BODY = 30 * 1024 * 1024 // 30MB (adjuntos PDF en base64)
 
-const ALLOWED_KEYS = new Set([
+// Colecciones tipo array (una fila por elemento, con su id)
+const ARRAY_KEYS = [
   'im_users',
   'im_clientes',
   'im_suscripciones_catalogo',
@@ -18,30 +22,85 @@ const ALLOWED_KEYS = new Set([
   'im_programas',
   'im_plantillas',
   'im_ejercicios',
-  'im_tareas_completadas',
-])
+]
+// Colección tipo objeto (mapa tareaId → fecha de completado)
+const OBJECT_KEY = 'im_tareas_completadas'
+const ALLOWED_KEYS = new Set([...ARRAY_KEYS, OBJECT_KEY])
 
-let data = {}
-try {
-  data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'))
-  console.log(`Datos cargados de ${DATA_FILE} (${Object.keys(data).length} colecciones)`)
-} catch {
-  console.log('Sin datos previos, arrancando vacío')
+// ── Base de datos ───────────────────────────────────────────────────────────
+const db = new DatabaseSync(DB_FILE)
+db.exec('PRAGMA journal_mode = WAL;')   // mejor durabilidad y concurrencia de lectura
+db.exec('PRAGMA foreign_keys = ON;')
+
+for (const k of ARRAY_KEYS) {
+  db.exec(`CREATE TABLE IF NOT EXISTS "${k}" (ord INTEGER PRIMARY KEY, id TEXT, data TEXT NOT NULL)`)
+}
+db.exec(`CREATE TABLE IF NOT EXISTS "${OBJECT_KEY}" (tarea_id TEXT PRIMARY KEY, completado_en TEXT NOT NULL)`)
+db.exec(`CREATE TABLE IF NOT EXISTS _meta (k TEXT PRIMARY KEY, v TEXT)`)
+
+function getCollection(key) {
+  if (key === OBJECT_KEY) {
+    const rows = db.prepare(`SELECT tarea_id, completado_en FROM "${OBJECT_KEY}"`).all()
+    const obj = {}
+    for (const r of rows) obj[r.tarea_id] = r.completado_en
+    return obj
+  }
+  const rows = db.prepare(`SELECT data FROM "${key}" ORDER BY ord`).all()
+  return rows.map(r => JSON.parse(r.data))
 }
 
-// Escritura atómica con debounce (tmp + rename)
-let writeTimer = null
-function persist() {
-  clearTimeout(writeTimer)
-  writeTimer = setTimeout(() => {
-    const tmp = DATA_FILE + '.tmp'
-    fs.writeFile(tmp, JSON.stringify(data), err => {
-      if (err) return console.error('Error al persistir:', err)
-      fs.rename(tmp, DATA_FILE, e => { if (e) console.error('Error al renombrar:', e) })
-    })
-  }, 100)
+function setCollection(key, value) {
+  if (key === OBJECT_KEY) {
+    const ins = db.prepare(`INSERT INTO "${OBJECT_KEY}" (tarea_id, completado_en) VALUES (?, ?)`)
+    db.exec('BEGIN')
+    try {
+      db.exec(`DELETE FROM "${OBJECT_KEY}"`)
+      for (const [k, v] of Object.entries(value || {})) ins.run(k, String(v))
+      db.exec('COMMIT')
+    } catch (e) { db.exec('ROLLBACK'); throw e }
+    return
+  }
+  const arr = Array.isArray(value) ? value : []
+  const ins = db.prepare(`INSERT INTO "${key}" (ord, id, data) VALUES (?, ?, ?)`)
+  db.exec('BEGIN')
+  try {
+    db.exec(`DELETE FROM "${key}"`)
+    arr.forEach((el, i) => ins.run(i, el && el.id != null ? String(el.id) : null, JSON.stringify(el)))
+    db.exec('COMMIT')
+  } catch (e) { db.exec('ROLLBACK'); throw e }
 }
 
+function getAll() {
+  const out = {}
+  for (const k of [...ARRAY_KEYS, OBJECT_KEY]) {
+    const v = getCollection(k)
+    const vacio = Array.isArray(v) ? v.length === 0 : Object.keys(v).length === 0
+    if (!vacio) out[k] = v
+  }
+  return out
+}
+
+// ── Migración única desde data.json (preserva los datos del modo anterior) ────
+const yaMigrado = db.prepare(`SELECT v FROM _meta WHERE k = 'migrated'`).get()
+if (!yaMigrado) {
+  if (fs.existsSync(JSON_FILE)) {
+    try {
+      const json = JSON.parse(fs.readFileSync(JSON_FILE, 'utf8'))
+      let n = 0
+      for (const k of [...ARRAY_KEYS, OBJECT_KEY]) {
+        if (json[k] != null) { setCollection(k, json[k]); n++ }
+      }
+      console.log(`Migración: ${n} colecciones importadas de ${JSON_FILE} → SQLite`)
+    } catch (e) {
+      console.error('Error migrando data.json:', e)
+    }
+  }
+  db.prepare(`INSERT OR REPLACE INTO _meta (k, v) VALUES ('migrated', '1')`).run()
+}
+
+console.log(`SQLite listo en ${DB_FILE}`)
+
+// ── HTTP ──────────────────────────────────────────────────────────────────────
 function json(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify(body))
@@ -50,17 +109,15 @@ function json(res, status, body) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost')
 
-  // CORS abierto (POC); en producción real se restringiría al dominio
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end() }
 
-  if (url.pathname === '/api/health') return json(res, 200, { ok: true })
+  if (url.pathname === '/api/health') return json(res, 200, { ok: true, db: 'sqlite' })
 
-  // Todas las colecciones de una vez (carga inicial del frontend)
   if (url.pathname === '/api/data' && req.method === 'GET') {
-    return json(res, 200, data)
+    return json(res, 200, getAll())
   }
 
   const m = url.pathname.match(/^\/api\/data\/([a-z_]+)$/)
@@ -68,7 +125,7 @@ const server = http.createServer((req, res) => {
     const key = m[1]
     if (!ALLOWED_KEYS.has(key)) return json(res, 400, { error: 'clave no permitida' })
 
-    if (req.method === 'GET') return json(res, 200, data[key] ?? null)
+    if (req.method === 'GET') return json(res, 200, getCollection(key))
 
     if (req.method === 'PUT') {
       let body = ''
@@ -82,11 +139,11 @@ const server = http.createServer((req, res) => {
       req.on('end', () => {
         if (aborted) return
         try {
-          data[key] = JSON.parse(body)
-          persist()
+          setCollection(key, JSON.parse(body))
           json(res, 200, { ok: true })
-        } catch {
-          json(res, 400, { error: 'JSON inválido' })
+        } catch (e) {
+          console.error('Error en PUT', key, e)
+          json(res, 400, { error: 'JSON inválido o error de escritura' })
         }
       })
       return
@@ -96,4 +153,4 @@ const server = http.createServer((req, res) => {
   json(res, 404, { error: 'no encontrado' })
 })
 
-server.listen(PORT, '127.0.0.1', () => console.log(`API escuchando en 127.0.0.1:${PORT}`))
+server.listen(PORT, '127.0.0.1', () => console.log(`API (SQLite) escuchando en 127.0.0.1:${PORT}`))
