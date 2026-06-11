@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import { type Usuario } from '../types'
+import { saveKV } from '../lib/storage'
 
 // crypto.randomUUID() requiere HTTPS — usamos una alternativa compatible con HTTP
 function genId(): string {
@@ -41,7 +42,7 @@ function loadUsers(): Usuario[] {
 }
 
 function saveUsers(users: Usuario[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(users))
+  saveKV(STORAGE_KEY, users)
 }
 
 // ─── Helpers de autenticación (usados por Login) ──────────────────────────────

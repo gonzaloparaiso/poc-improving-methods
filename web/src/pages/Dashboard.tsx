@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useClientes } from '../context/ClientesContext'
 import { CALENDAR_COLORS } from '../types'
+import { saveKV } from '../lib/storage'
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -50,7 +51,7 @@ export default function Dashboard() {
       const next = { ...prev }
       if (next[id]) delete next[id]
       else next[id] = new Date().toISOString()
-      localStorage.setItem(KEY_COMPLETADAS, JSON.stringify(next))
+      saveKV(KEY_COMPLETADAS, next)
       return next
     })
   }

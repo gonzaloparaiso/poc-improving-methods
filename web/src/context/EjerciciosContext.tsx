@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import { type Ejercicio, type Programa, type Bloque, type CalendarioCliente } from '../types'
 import { EJERCICIOS_SEED } from '../data/ejercicios'
+import { saveKV } from '../lib/storage'
 
 function genId() {
   return 'ej_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
@@ -16,7 +17,7 @@ function load(): Ejercicio[] {
     return parsed.length > 0 ? parsed : EJERCICIOS_SEED
   } catch { return EJERCICIOS_SEED }
 }
-function save(v: Ejercicio[]) { localStorage.setItem(KEY, JSON.stringify(v)) }
+function save(v: Ejercicio[]) { saveKV(KEY, v) }
 
 /** Devuelve dónde está usado un ejercicio: programas y plantillas (calendarios = copia ya entregada) */
 export function buscarUsos(ejercicioId: string): {

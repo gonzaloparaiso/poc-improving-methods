@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import { type Cliente, type CatalogoSuscripcion, type SuscripcionCliente, type TipoSuscripcion, type ProgramaAsociado } from '../types'
+import { saveKV } from '../lib/storage'
 
 /** Migra un catalogo item antiguo al nuevo formato (programas[] + precio/prueba) */
 function migrarCatalogo(raw: Record<string, unknown>): CatalogoSuscripcion {
@@ -48,7 +49,7 @@ function load<T>(key: string, fallback: T): T {
   try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback }
   catch { return fallback }
 }
-function save<T>(key: string, val: T) { localStorage.setItem(key, JSON.stringify(val)) }
+function save<T>(key: string, val: T) { saveKV(key, val) }
 
 // ─── Context value ────────────────────────────────────────────────────────────
 interface ClientesContextValue {

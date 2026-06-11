@@ -3,6 +3,7 @@ import {
   type CalendarioCliente, type SemanaCalendario, type DiaCalendario,
   type Bloque, type Programa,
 } from '../types'
+import { saveKV } from '../lib/storage'
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
@@ -52,7 +53,7 @@ function load<T>(key: string, fb: T): T {
 }
 function save<T>(key: string, v: T) {
   try {
-    localStorage.setItem(key, JSON.stringify(v))
+    saveKV(key, v)
   } catch (err) {
     console.error('[Calendarios] Error guardando en localStorage:', err)
     // Cuota excedida: probable causa = adjuntos PDF en base64 demasiado grandes
