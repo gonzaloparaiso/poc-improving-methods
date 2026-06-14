@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { type User } from '../App'
-import { loginConCredenciales } from '../context/UsersContext'
+import { loginStaff, bootSync } from '../lib/storage'
 
 interface Props {
   onLogin: (user: User) => void
@@ -12,24 +12,26 @@ export default function Login({ onLogin }: Props) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
-
-    setTimeout(() => {
-      const usuario = loginConCredenciales(username.trim(), password)
-      if (usuario) {
-        onLogin({
-          username: usuario.username,
-          role: usuario.rol,
-          nombre: `${usuario.nombre}${usuario.apellido ? ' ' + usuario.apellido : ''}`,
-        })
-      } else {
-        setError('Usuario o contraseña incorrectos')
-        setLoading(false)
+    try {
+      const usuario = await loginStaff(username.trim(), password)
+      const sesion: User = {
+        username: usuario.username,
+        role: usuario.rol,
+        nombre: `${usuario.nombre}${usuario.apellido ? ' ' + usuario.apellido : ''}`,
       }
-    }, 600)
+      sessionStorage.setItem('im_user', JSON.stringify(sesion))
+      // Cargar los datos del servidor con el nuevo token y entrar al panel
+      await bootSync()
+      window.location.assign('/')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Usuario o contraseña incorrectos')
+      setLoading(false)
+    }
+    void onLogin
   }
 
   return (

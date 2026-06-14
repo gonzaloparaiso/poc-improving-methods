@@ -1,42 +1,31 @@
 import { useState, type FormEvent } from 'react'
-import { useClientes } from '../../context/ClientesContext'
 import { type Cliente } from '../../types'
+import { loginCliente as apiLoginCliente, bootSync } from '../../lib/storage'
 
 interface Props {
   onLogin: (c: Cliente) => void
 }
 
 export default function ClienteLogin({ onLogin }: Props) {
-  const { loginCliente, clientes } = useClientes()
   const [identificador, setIdentificador] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
-
-    setTimeout(() => {
-      const id = identificador.trim()
-      // Intenta primero por email
-      let cliente = loginCliente(id, password)
-      // Si no, prueba por username
-      if (!cliente) {
-        const byUsername = clientes.find(
-          c => c.activo && c.username === id && c.password === password
-        )
-        if (byUsername) cliente = byUsername
-      }
-
-      if (cliente) {
-        onLogin(cliente)
-      } else {
-        setError('Credenciales incorrectas o cliente inactivo')
-        setLoading(false)
-      }
-    }, 500)
+    try {
+      const cliente = await apiLoginCliente(identificador.trim(), password)
+      sessionStorage.setItem('im_cliente_sesion', JSON.stringify(cliente))
+      await bootSync()
+      window.location.assign('/portal')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Credenciales incorrectas o cliente inactivo')
+      setLoading(false)
+    }
+    void onLogin
   }
 
   return (

@@ -6,6 +6,7 @@ import { ClientesProvider } from './context/ClientesContext'
 import { CalendariosProvider } from './context/CalendariosContext'
 import { EjerciciosProvider } from './context/EjerciciosContext'
 import { usePermisos } from './hooks/usePermisos'
+import { logout as apiLogout } from './lib/storage'
 import { type Seccion, type Cliente } from './types'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -38,23 +39,30 @@ function HomeRedirect() {
 const STORAGE_CLIENTE = 'im_cliente_sesion'
 
 function App() {
+  // La sesión solo es válida si hay token (evita estados antiguos sin token)
   const [user, setUser] = useState<User | null>(() => {
     const saved = sessionStorage.getItem('im_user')
-    return saved ? JSON.parse(saved) : null
+    const token = sessionStorage.getItem('im_token')
+    return saved && token ? JSON.parse(saved) : null
   })
 
   const [cliente, setCliente] = useState<Cliente | null>(() => {
     const saved = sessionStorage.getItem(STORAGE_CLIENTE)
-    return saved ? JSON.parse(saved) : null
+    const token = sessionStorage.getItem('im_cliente_token')
+    return saved && token ? JSON.parse(saved) : null
   })
 
+  // El login real (con token) lo hacen los componentes Login/ClienteLogin y
+  // recargan la página; estos setters solo cubren el estado local de React.
   const loginStaff = (u: User) => {
     sessionStorage.setItem('im_user', JSON.stringify(u))
     setUser(u)
   }
   const logoutStaff = () => {
+    apiLogout()
     sessionStorage.removeItem('im_user')
     setUser(null)
+    window.location.assign('/login')
   }
 
   const loginCliente = (c: Cliente) => {
@@ -62,8 +70,10 @@ function App() {
     setCliente(c)
   }
   const logoutCliente = () => {
+    apiLogout()
     sessionStorage.removeItem(STORAGE_CLIENTE)
     setCliente(null)
+    window.location.assign('/portal/login')
   }
 
   return (

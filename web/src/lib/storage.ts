@@ -1,6 +1,5 @@
-// Capa de persistencia: el servidor es la fuente de verdad y localStorage
-// queda como caché local (los contexts siguen leyendo de localStorage de forma
-// síncrona, igual que antes).
+// Capa de persistencia + sesión. El servidor (SQLite) es la fuente de verdad
+// y localStorage queda como caché local. Todas las peticiones llevan el token.
 
 const API = '/api'
 
@@ -16,45 +15,91 @@ export const SYNC_KEYS = [
   'im_tareas_completadas',
 ] as const
 
+// ── Token de sesión ───────────────────────────────────────────────────────────
+const TOKEN_STAFF = 'im_token'
+const TOKEN_CLIENTE = 'im_cliente_token'
+
+export function getToken(): string | null {
+  return sessionStorage.getItem(TOKEN_STAFF) || sessionStorage.getItem(TOKEN_CLIENTE)
+}
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const t = getToken()
+  return { ...(extra || {}), ...(t ? { Authorization: `Bearer ${t}` } : {}) }
+}
+
+export async function loginStaff(username: string, password: string) {
+  const res = await fetch(`${API}/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Error de acceso') }
+  const { token, user } = await res.json()
+  sessionStorage.setItem(TOKEN_STAFF, token)
+  return user
+}
+
+export async function loginCliente(identificador: string, password: string) {
+  const res = await fetch(`${API}/portal/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identificador, password }),
+  })
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Error de acceso') }
+  const { token, cliente } = await res.json()
+  sessionStorage.setItem(TOKEN_CLIENTE, token)
+  return cliente
+}
+
+export function logout() {
+  const t = getToken()
+  if (t) void fetch(`${API}/logout`, { method: 'POST', headers: authHeaders() }).catch(() => {})
+  sessionStorage.removeItem(TOKEN_STAFF)
+  sessionStorage.removeItem(TOKEN_CLIENTE)
+}
+
+// ── Persistencia (panel) ──────────────────────────────────────────────────────
 /** Guarda en localStorage (caché) y empuja al servidor en segundo plano */
 export function saveKV(key: string, value: unknown) {
   const serialized = JSON.stringify(value)
   localStorage.setItem(key, serialized)
   void fetch(`${API}/data/${key}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: serialized,
-  }).catch(err => console.warn(`[sync] No se pudo guardar ${key} en el servidor:`, err))
+  }).catch(err => console.warn(`[sync] No se pudo guardar ${key}:`, err))
 }
 
+// ── Sincronización inicial ──────────────────────────────────────────────────────
 /**
- * Sincronización inicial, antes de montar la app:
- * - Si el servidor tiene datos para una clave → sobreescribe la caché local.
- * - Si el servidor NO los tiene pero localStorage sí → migra lo local al servidor
- *   (cubre la transición desde el POC solo-localStorage).
- * - Si la API no responde → seguimos en modo solo-local sin romper nada.
+ * Carga los datos del servidor antes de montar la app, según la sesión:
+ *  - Staff: GET /api/data (todas las colecciones).
+ *  - Cliente: GET /api/portal/me (solo sus datos).
+ *  - Sin sesión: no hace nada (las pantallas de login no necesitan datos).
  */
 export async function bootSync(): Promise<void> {
+  const staff = sessionStorage.getItem(TOKEN_STAFF)
+  const cliente = sessionStorage.getItem(TOKEN_CLIENTE)
   try {
-    const res = await fetch(`${API}/data`, { signal: AbortSignal.timeout(5000) })
-    if (!res.ok) return
-    const remote = (await res.json()) as Record<string, unknown>
-
-    for (const key of SYNC_KEYS) {
-      if (remote[key] !== undefined && remote[key] !== null) {
-        localStorage.setItem(key, JSON.stringify(remote[key]))
-      } else {
-        const local = localStorage.getItem(key)
-        if (local) {
-          void fetch(`${API}/data/${key}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: local,
-          }).catch(() => {})
-        }
+    if (staff) {
+      const res = await fetch(`${API}/data`, { headers: { Authorization: `Bearer ${staff}` }, signal: AbortSignal.timeout(8000) })
+      if (res.status === 401) return logout()
+      if (!res.ok) return
+      const remote = (await res.json()) as Record<string, unknown>
+      for (const key of SYNC_KEYS) {
+        if (remote[key] !== undefined && remote[key] !== null) localStorage.setItem(key, JSON.stringify(remote[key]))
+        else localStorage.removeItem(key)
+      }
+    } else if (cliente) {
+      const res = await fetch(`${API}/portal/me`, { headers: { Authorization: `Bearer ${cliente}` }, signal: AbortSignal.timeout(8000) })
+      if (res.status === 401) return logout()
+      if (!res.ok) return
+      const me = await res.json() as Record<string, unknown>
+      // Escribir solo las colecciones que el portal necesita (datos del propio cliente)
+      localStorage.setItem('im_clientes', JSON.stringify([me.cliente]))
+      for (const key of ['im_suscripciones_clientes', 'im_suscripciones_catalogo', 'im_calendarios', 'im_ejercicios']) {
+        localStorage.setItem(key, JSON.stringify(me[key] ?? []))
       }
     }
   } catch (err) {
-    console.warn('[sync] API no disponible, usando datos locales:', err)
+    console.warn('[sync] API no disponible:', err)
   }
 }
