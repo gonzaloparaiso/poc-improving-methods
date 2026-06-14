@@ -4,18 +4,17 @@ const http = require('http')
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
-const tls = require('tls')
 const { DatabaseSync } = require('node:sqlite')
 
 const PORT = process.env.PORT || 3001
 
-// ── Email (SMTP, p.ej. Google) — opcional vía variables de entorno ───────────
-const SMTP = {
-  host: process.env.SMTP_HOST || '',          // p.ej. smtp.gmail.com
-  port: Number(process.env.SMTP_PORT || 465),  // 465 = SSL
-  user: process.env.SMTP_USER || '',           // p.ej. info@trainingnorte.com
-  pass: process.env.SMTP_PASS || '',           // app password de Google
-  from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
+// ── Email (Gmail API + cuenta de servicio con delegación de dominio) ──────────
+// DigitalOcean bloquea SMTP de salida, así que enviamos por la API de Gmail
+// sobre HTTPS. Config vía variables de entorno (todas opcionales):
+const GMAIL = {
+  sender: process.env.GMAIL_SENDER || '',                          // info@trainingnorte.com
+  saEmail: process.env.GMAIL_SA_CLIENT_EMAIL || '',                // cuenta de servicio ...iam.gserviceaccount.com
+  saKey: (process.env.GMAIL_SA_PRIVATE_KEY || '').replace(/\\n/g, '\n'), // private_key del JSON
 }
 const APP_URL = process.env.APP_URL || ''      // base del enlace de reset (dominio); si vacío se deriva de la petición
 const PASSWORD_RESET_TTL = 60 * 60 * 1000      // 1 hora
@@ -146,58 +145,52 @@ function getSesion(req) {
   return row
 }
 
-// ── Envío de email por SMTP (TLS implícito, sin dependencias) ─────────────────
-function smtpConfigured() { return Boolean(SMTP.host && SMTP.user && SMTP.pass) }
+// ── Envío de email por la API de Gmail (OAuth2 con cuenta de servicio) ────────
+function emailConfigured() { return Boolean(GMAIL.sender && GMAIL.saEmail && GMAIL.saKey) }
 
-function sendMail({ to, subject, html }) {
-  return new Promise((resolve, reject) => {
-    if (!smtpConfigured()) return reject(new Error('SMTP no configurado'))
-    const b64 = s => Buffer.from(s, 'utf8').toString('base64')
-    const fromAddr = SMTP.from || SMTP.user
-    // Dot-stuffing básico (líneas que empiezan por '.')
-    const safeHtml = String(html || '').replace(/\r?\n/g, '\r\n').replace(/\r\n\./g, '\r\n..')
-    const body =
-      `From: Training Norte <${fromAddr}>\r\n` +
-      `To: <${to}>\r\n` +
-      `Subject: ${subject}\r\n` +
-      `MIME-Version: 1.0\r\n` +
-      `Content-Type: text/html; charset=UTF-8\r\n\r\n` +
-      safeHtml + `\r\n.\r\n`
+const b64url = (input) => Buffer.from(input).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
-    // Cada paso: el código que se ESPERA recibir y el comando a enviar tras validarlo
-    const steps = [
-      { expect: 220, cmd: `EHLO trainingnorte\r\n` },
-      { expect: 250, cmd: `AUTH LOGIN\r\n` },
-      { expect: 334, cmd: `${b64(SMTP.user)}\r\n` },
-      { expect: 334, cmd: `${b64(SMTP.pass)}\r\n` },
-      { expect: 235, cmd: `MAIL FROM:<${fromAddr}>\r\n` },
-      { expect: 250, cmd: `RCPT TO:<${to}>\r\n` },
-      { expect: 250, cmd: `DATA\r\n` },
-      { expect: 354, cmd: body },
-      { expect: 250, cmd: `QUIT\r\n`, resolveAfter: true },
-    ]
-
-    const socket = tls.connect({ host: SMTP.host, port: SMTP.port, servername: SMTP.host })
-    socket.setEncoding('utf8')
-    socket.setTimeout(15000, () => { socket.destroy(); reject(new Error('SMTP timeout')) })
-    socket.on('error', reject)
-
-    let i = 0, buf = ''
-    socket.on('data', chunk => {
-      buf += chunk
-      if (!buf.endsWith('\r\n')) return
-      const last = buf.trim().split('\r\n').pop()
-      if (/^\d{3}-/.test(last)) return // respuesta multilínea aún incompleta
-      const code = Number(last.slice(0, 3))
-      buf = ''
-      const step = steps[i]
-      if (!step) return
-      if (code !== step.expect) { socket.destroy(); return reject(new Error(`SMTP ${code}: ${last}`)) }
-      socket.write(step.cmd)
-      if (step.resolveAfter) { socket.end(); resolve(true); return }
-      i++
-    })
+// Firma un JWT y lo cambia por un access token (delegando en el remitente)
+async function gmailAccessToken() {
+  const now = Math.floor(Date.now() / 1000)
+  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+  const claims = b64url(JSON.stringify({
+    iss: GMAIL.saEmail,
+    scope: 'https://www.googleapis.com/auth/gmail.send',
+    aud: 'https://oauth2.googleapis.com/token',
+    sub: GMAIL.sender,              // la cuenta de servicio actúa como este buzón
+    iat: now, exp: now + 3600,
+  }))
+  const signingInput = `${header}.${claims}`
+  const signature = b64url(crypto.createSign('RSA-SHA256').update(signingInput).sign(GMAIL.saKey))
+  const assertion = `${signingInput}.${signature}`
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }),
   })
+  const data = await res.json().catch(() => ({}))
+  if (!data.access_token) throw new Error('Gmail OAuth: ' + JSON.stringify(data))
+  return data.access_token
+}
+
+async function sendMail({ to, subject, html }) {
+  if (!emailConfigured()) throw new Error('Email (Gmail API) no configurado')
+  const token = await gmailAccessToken()
+  const subjectEnc = `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=` // por las tildes
+  const mime =
+    `From: Training Norte <${GMAIL.sender}>\r\n` +
+    `To: ${to}\r\n` +
+    `Subject: ${subjectEnc}\r\n` +
+    `MIME-Version: 1.0\r\n` +
+    `Content-Type: text/html; charset=UTF-8\r\n\r\n` +
+    String(html || '')
+  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/${encodeURIComponent(GMAIL.sender)}/messages/send`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw: b64url(mime) }),
+  })
+  if (!res.ok) throw new Error(`Gmail send ${res.status}: ${await res.text()}`)
+  return true
 }
 function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function siguienteLunes() { const h = new Date(); h.setHours(0, 0, 0, 0); const dow = h.getDay(); const d = new Date(h); d.setDate(h.getDate() + (dow === 1 ? 0 : (1 - dow + 7) % 7)); return d.toISOString().split('T')[0] }
@@ -349,7 +342,7 @@ const server = http.createServer(async (req, res) => {
           `<p style="color:#999;font-size:12px">${link}</p></div>`
         sendMail({ to: c.email, subject: 'Restablecer tu contraseña · Training Norte', html })
           .catch(err => console.warn('[email] no se pudo enviar el reset:', err.message))
-        if (!smtpConfigured()) console.log('[email] SMTP sin configurar. Enlace de reset:', link)
+        if (!emailConfigured()) console.log('[email] Gmail API sin configurar. Enlace de reset:', link)
       }
       return json(res, 200, { ok: true }) // nunca revelamos si el email existe
     }
