@@ -1,4 +1,5 @@
 import { type Ejercicio } from '../../data/ejercicios'
+import VideoPlayer from '../../components/VideoPlayer'
 
 interface Props {
   ejercicio: Ejercicio
@@ -9,20 +10,7 @@ interface Props {
   onClose: () => void
 }
 
-// Convierte URLs de YouTube/Vimeo a embed
-function toEmbed(url: string): string | null {
-  if (!url) return null
-  // YouTube
-  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([^&?\s]+)/)
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
-  // Vimeo
-  const vm = url.match(/vimeo\.com\/(\d+)/)
-  if (vm) return `https://player.vimeo.com/video/${vm[1]}`
-  return url
-}
-
 export default function EjercicioDetalleModal({ ejercicio, series, reps, descanso, notas, onClose }: Props) {
-  const embedUrl = toEmbed(ejercicio.video)
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -44,15 +32,9 @@ export default function EjercicioDetalleModal({ ejercicio, series, reps, descans
         <div className="flex-1 overflow-y-auto">
 
           {/* Vídeo */}
-          {embedUrl ? (
-            <div className="relative bg-tn-black" style={{ paddingBottom: '56.25%' }}>
-              <iframe
-                src={embedUrl}
-                className="absolute inset-0 w-full h-full"
-                allowFullScreen
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                title={ejercicio.nombre}
-              />
+          {ejercicio.video ? (
+            <div className="bg-tn-black p-3 sm:p-4">
+              <VideoPlayer url={ejercicio.video} poster={ejercicio.thumbnail} title={ejercicio.nombre} />
             </div>
           ) : (
             <div className="bg-tn-dark border-b border-tn-border py-12 flex flex-col items-center justify-center">

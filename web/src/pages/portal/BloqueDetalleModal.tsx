@@ -124,6 +124,10 @@ export default function BloqueDetalleModal({ bloque, programaNombre, colorKey, f
                         <span className="w-8 h-8 rounded-lg bg-tn-yellow/10 text-tn-yellow text-sm font-bold flex items-center justify-center flex-shrink-0">
                           {idx + 1}
                         </span>
+                        {ejercicio.thumbnail && (
+                          <img src={ejercicio.thumbnail} alt="" loading="lazy"
+                            className="w-12 h-12 rounded-lg object-cover bg-tn-card flex-shrink-0" />
+                        )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <p className="text-white font-semibold text-sm group-hover:text-tn-yellow transition-colors">
