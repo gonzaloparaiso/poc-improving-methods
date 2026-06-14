@@ -337,8 +337,10 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                 <p className="text-tn-muted text-sm mb-6">
                   Todavía no tienes ningún programa asignado. Descubre nuestros programas en la tienda.
                 </p>
-                <button
-                  type="button"
+                <a
+                  href="https://trainingnorte.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="btn-primary w-full flex items-center justify-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -346,7 +348,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                       d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                   Ir a la tienda
-                </button>
+                </a>
               </>
             )}
           </div>
@@ -460,20 +462,24 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                     </div>
                   </div>
                   {esUnico ? (
-                    <button
-                      type="button"
+                    <a
+                      href="https://trainingnorte.com/atletas/"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="btn-secondary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                           d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                       </svg>
-                      Ver todos los programas armour
-                    </button>
+                      Ver programas para atletas
+                    </a>
                   ) : (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        type="button"
+                      <a
+                        href="https://trainingnorte.com/tn-box/"
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="btn-secondary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -481,7 +487,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                             d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                         </svg>
                         Ver otras suscripciones
-                      </button>
+                      </a>
                       <button
                         type="button"
                         className="btn-primary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
