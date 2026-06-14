@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { type User } from '../App'
 import { loginStaff, bootSync } from '../lib/storage'
+import PasswordInput from '../components/PasswordInput'
 
 interface Props {
   onLogin: (user: User) => void
@@ -26,7 +27,7 @@ export default function Login({ onLogin }: Props) {
       sessionStorage.setItem('im_user', JSON.stringify(sesion))
       // Cargar los datos del servidor con el nuevo token y entrar al panel
       await bootSync()
-      window.location.assign('/')
+      window.location.assign('/admin')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Usuario o contraseña incorrectos')
       setLoading(false)
@@ -78,9 +79,7 @@ export default function Login({ onLogin }: Props) {
 
             <div>
               <label className="label">Contraseña</label>
-              <input
-                type="password"
-                className="input-field"
+              <PasswordInput
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

@@ -25,16 +25,16 @@ export interface User {
   nombre: string
 }
 
-/** Guarda una ruta: si el rol no tiene acceso, redirige a /clientes */
+/** Guarda una ruta: si el rol no tiene acceso, redirige al panel de clientes */
 function Guard({ seccion, children }: { seccion: Seccion; children: ReactNode }) {
   const { puede } = usePermisos()
-  if (!puede(seccion, 'ver')) return <Navigate to="/clientes" replace />
+  if (!puede(seccion, 'ver')) return <Navigate to="/admin/clientes" replace />
   return <>{children}</>
 }
 
-/** Ruta raíz: todos los roles entran directamente a Clientes */
+/** Entrada del panel: todos los roles van directamente a Clientes */
 function HomeRedirect() {
-  return <Navigate to="/clientes" replace />
+  return <Navigate to="/admin/clientes" replace />
 }
 
 const STORAGE_CLIENTE = 'im_cliente_sesion'
@@ -63,7 +63,7 @@ function App() {
     apiLogout()
     sessionStorage.removeItem('im_user')
     setUser(null)
-    window.location.assign('/login')
+    window.location.assign('/admin/login')
   }
 
   const loginCliente = (c: Cliente) => {
@@ -74,7 +74,7 @@ function App() {
     apiLogout()
     sessionStorage.removeItem(STORAGE_CLIENTE)
     setCliente(null)
-    window.location.assign('/portal/login')
+    window.location.assign('/login')
   }
 
   return (
@@ -85,47 +85,48 @@ function App() {
       <PlanificacionProvider>
         <BrowserRouter>
           <Routes>
-            {/* Portal cliente */}
+            {/* ── Panel de administradores (staff) bajo /admin ── */}
             <Route
-              path="/portal/login"
-              element={cliente ? <Navigate to="/portal" replace /> : <ClienteLogin onLogin={loginCliente} />}
-            />
-            <Route path="/portal/reset" element={<ClienteReset />} />
-            <Route
-              path="/portal"
-              element={
-                cliente
-                  ? <PortalCliente cliente={cliente} onLogout={logoutCliente} />
-                  : <Navigate to="/portal/login" replace />
-              }
-            />
-
-            {/* Staff */}
-            <Route
-              path="/login"
-              element={user ? <Navigate to="/" replace /> : <Login onLogin={loginStaff} />}
+              path="/admin/login"
+              element={user ? <Navigate to="/admin" replace /> : <Login onLogin={loginStaff} />}
             />
             <Route
-              path="/*"
+              path="/admin/*"
               element={
                 user ? (
                   <Layout user={user} onLogout={logoutStaff}>
                     <Routes>
-                      <Route path="/" element={<HomeRedirect />} />
-                      <Route path="/dashboard" element={
+                      <Route path="" element={<HomeRedirect />} />
+                      <Route path="dashboard" element={
                         <Guard seccion="dashboard"><Dashboard /></Guard>
                       } />
-                      <Route path="/administracion" element={
+                      <Route path="administracion" element={
                         <Guard seccion="administracion"><Administracion /></Guard>
                       } />
-                      <Route path="/clientes"       element={<Clientes />} />
-                      <Route path="/suscripciones"  element={<Suscripciones />} />
-                      <Route path="/planificacion"  element={<Planificacion />} />
+                      <Route path="clientes"       element={<Clientes />} />
+                      <Route path="suscripciones"  element={<Suscripciones />} />
+                      <Route path="planificacion"  element={<Planificacion />} />
+                      <Route path="*" element={<HomeRedirect />} />
                     </Routes>
                   </Layout>
                 ) : (
-                  <Navigate to="/login" replace />
+                  <Navigate to="/admin/login" replace />
                 )
+              }
+            />
+
+            {/* ── Portal de clientes en la raíz ── */}
+            <Route
+              path="/login"
+              element={cliente ? <Navigate to="/" replace /> : <ClienteLogin onLogin={loginCliente} />}
+            />
+            <Route path="/reset" element={<ClienteReset />} />
+            <Route
+              path="/*"
+              element={
+                cliente
+                  ? <PortalCliente cliente={cliente} onLogout={logoutCliente} />
+                  : <Navigate to="/login" replace />
               }
             />
           </Routes>

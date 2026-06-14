@@ -13,7 +13,7 @@ interface Props {
 
 const navItems: { path: string; label: string; seccion: Seccion; icon: React.ReactNode }[] = [
   {
-    path: '/dashboard',
+    path: '/admin/dashboard',
     label: 'Dashboard',
     seccion: 'dashboard',
     icon: (
@@ -24,7 +24,7 @@ const navItems: { path: string; label: string; seccion: Seccion; icon: React.Rea
     ),
   },
   {
-    path: '/administracion',
+    path: '/admin/administracion',
     label: 'Administración',
     seccion: 'administracion',
     icon: (
@@ -36,7 +36,7 @@ const navItems: { path: string; label: string; seccion: Seccion; icon: React.Rea
     ),
   },
   {
-    path: '/clientes',
+    path: '/admin/clientes',
     label: 'Clientes',
     seccion: 'clientes',
     icon: (
@@ -47,7 +47,7 @@ const navItems: { path: string; label: string; seccion: Seccion; icon: React.Rea
     ),
   },
   {
-    path: '/suscripciones',
+    path: '/admin/suscripciones',
     label: 'Suscripciones',
     seccion: 'suscripciones',
     icon: (
@@ -58,7 +58,7 @@ const navItems: { path: string; label: string; seccion: Seccion; icon: React.Rea
     ),
   },
   {
-    path: '/planificacion',
+    path: '/admin/planificacion',
     label: 'Planificación',
     seccion: 'planificaciones',
     icon: (

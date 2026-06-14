@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { apiResetPassword } from '../../lib/storage'
+import PasswordInput from '../../components/PasswordInput'
 
 export default function ClienteReset() {
   const token = new URLSearchParams(window.location.search).get('token') || ''
@@ -18,7 +19,7 @@ export default function ClienteReset() {
     try {
       await apiResetPassword(token, nueva)
       setOk(true)
-      setTimeout(() => window.location.assign('/portal/login'), 1800)
+      setTimeout(() => window.location.assign('/login'), 1800)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo restablecer la contraseña')
       setLoading(false)
@@ -40,7 +41,7 @@ export default function ClienteReset() {
           {!token ? (
             <div className="text-center">
               <p className="text-tn-muted text-sm mb-6">Enlace no válido. Solicita uno nuevo desde el inicio de sesión.</p>
-              <a href="/portal/login" className="btn-primary w-full inline-block text-center">Ir al inicio de sesión</a>
+              <a href="/login" className="btn-primary w-full inline-block text-center">Ir al inicio de sesión</a>
             </div>
           ) : ok ? (
             <div className="text-center py-4">
@@ -56,12 +57,12 @@ export default function ClienteReset() {
             <form onSubmit={submit} className="space-y-5">
               <div>
                 <label className="label">Nueva contraseña</label>
-                <input type="password" className="input-field" placeholder="••••••••"
+                <PasswordInput placeholder="••••••••"
                   value={nueva} onChange={e => setNueva(e.target.value)} autoComplete="new-password" autoFocus required />
               </div>
               <div>
                 <label className="label">Repetir contraseña</label>
-                <input type="password" className="input-field" placeholder="••••••••"
+                <PasswordInput placeholder="••••••••"
                   value={confirmar} onChange={e => setConfirmar(e.target.value)} autoComplete="new-password" required />
               </div>
               {error && (

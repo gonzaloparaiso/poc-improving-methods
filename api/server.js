@@ -342,7 +342,7 @@ const server = http.createServer(async (req, res) => {
         const rtoken = crypto.randomBytes(32).toString('hex')
         db.prepare(`INSERT INTO _password_resets (token, cliente_id, expira) VALUES (?,?,?)`).run(rtoken, c.id, Date.now() + PASSWORD_RESET_TTL)
         const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
-        const link = `${base}/portal/reset?token=${rtoken}`
+        const link = `${base}/reset?token=${rtoken}`
         const html =
           `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto">` +
           `<h2 style="color:#111">Restablecer tu contraseña</h2>` +

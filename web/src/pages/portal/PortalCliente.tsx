@@ -6,6 +6,7 @@ import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import BloqueDetalleModal from './BloqueDetalleModal'
 import { exportarPDF, exportarExcel, exportarAimharder, exportarWodbuster } from './exporters'
 import { apiPortalChangePassword } from '../../lib/storage'
+import PasswordInput from '../../components/PasswordInput'
 
 interface Props {
   cliente: Cliente
@@ -853,17 +854,17 @@ function CambiarPasswordModal({ onClose }: { onClose: () => void }) {
           <form onSubmit={submit} className="p-6 space-y-4">
             <div>
               <label className="label">Contraseña actual</label>
-              <input type="password" className="input-field" value={actual} autoFocus
+              <PasswordInput value={actual} autoFocus
                 onChange={e => setActual(e.target.value)} autoComplete="current-password" />
             </div>
             <div>
               <label className="label">Nueva contraseña</label>
-              <input type="password" className="input-field" value={nueva}
+              <PasswordInput value={nueva}
                 onChange={e => setNueva(e.target.value)} autoComplete="new-password" />
             </div>
             <div>
               <label className="label">Repetir nueva contraseña</label>
-              <input type="password" className="input-field" value={confirmar}
+              <PasswordInput value={confirmar}
                 onChange={e => setConfirmar(e.target.value)} autoComplete="new-password" />
             </div>
             {error && (

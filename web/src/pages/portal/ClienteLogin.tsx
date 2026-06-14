@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { type Cliente } from '../../types'
 import { loginCliente as apiLoginCliente, bootSync, apiForgotPassword } from '../../lib/storage'
+import PasswordInput from '../../components/PasswordInput'
 
 interface Props {
   onLogin: (c: Cliente) => void
@@ -34,7 +35,7 @@ export default function ClienteLogin({ onLogin }: Props) {
       const cliente = await apiLoginCliente(identificador.trim(), password)
       sessionStorage.setItem('im_cliente_sesion', JSON.stringify(cliente))
       await bootSync()
-      window.location.assign('/portal')
+      window.location.assign('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Credenciales incorrectas o cliente inactivo')
       setLoading(false)
@@ -71,7 +72,7 @@ export default function ClienteLogin({ onLogin }: Props) {
 
                 <div>
                   <label className="label">Contraseña</label>
-                  <input type="password" className="input-field" placeholder="••••••••"
+                  <PasswordInput placeholder="••••••••"
                     value={password} onChange={e => setPassword(e.target.value)}
                     autoComplete="current-password" required />
                 </div>
@@ -95,7 +96,7 @@ export default function ClienteLogin({ onLogin }: Props) {
               </div>
 
               <div className="mt-6 pt-6 border-t border-tn-border text-center">
-                <a href="/login" className="text-tn-muted text-xs hover:text-tn-yellow transition-colors">
+                <a href="/admin/login" className="text-tn-muted text-xs hover:text-tn-yellow transition-colors">
                   ¿Eres entrenador? Accede aquí
                 </a>
               </div>
