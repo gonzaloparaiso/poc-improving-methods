@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, type ReactNode } from
 import { type Ejercicio, type Programa, type Bloque, type CalendarioCliente } from '../types'
 import { EJERCICIOS_SEED } from '../data/ejercicios'
 import { saveKV } from '../lib/storage'
+import * as kv from '../lib/kv'
 
 function genId() {
   return 'ej_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
@@ -11,7 +12,7 @@ const KEY = 'im_ejercicios'
 
 function load(): Ejercicio[] {
   try {
-    const raw = localStorage.getItem(KEY)
+    const raw = kv.get(KEY)
     if (!raw) return EJERCICIOS_SEED
     const parsed = JSON.parse(raw) as Ejercicio[]
     return parsed.length > 0 ? parsed : EJERCICIOS_SEED
@@ -29,7 +30,7 @@ export function buscarUsos(ejercicioId: string): {
   const plantillas: string[] = []
   let calendarios = 0
   try {
-    const progs = JSON.parse(localStorage.getItem('im_programas') ?? '[]') as Programa[]
+    const progs = JSON.parse(kv.get('im_programas') ?? '[]') as Programa[]
     progs.forEach(p => {
       const usado = p.semanas.some(s => s.dias.some(d => d.bloques.some(b =>
         b.ejercicios.some(e => e.ejercicioId === ejercicioId))))
@@ -37,13 +38,13 @@ export function buscarUsos(ejercicioId: string): {
     })
   } catch { /* */ }
   try {
-    const plants = JSON.parse(localStorage.getItem('im_plantillas') ?? '[]') as Bloque[]
+    const plants = JSON.parse(kv.get('im_plantillas') ?? '[]') as Bloque[]
     plants.forEach(b => {
       if (b.ejercicios.some(e => e.ejercicioId === ejercicioId)) plantillas.push(b.nombre)
     })
   } catch { /* */ }
   try {
-    const cals = JSON.parse(localStorage.getItem('im_calendarios') ?? '[]') as CalendarioCliente[]
+    const cals = JSON.parse(kv.get('im_calendarios') ?? '[]') as CalendarioCliente[]
     cals.forEach(c => {
       const usado = c.semanas.some(s => s.dias.some(d => d.bloques.some(b =>
         b.ejercicios.some(e => e.ejercicioId === ejercicioId))))

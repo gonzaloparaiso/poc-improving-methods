@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useClientes } from '../context/ClientesContext'
 import { CALENDAR_COLORS } from '../types'
 import { saveKV } from '../lib/storage'
+import * as kv from '../lib/kv'
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -28,7 +29,7 @@ interface Tarea {
 
 const KEY_COMPLETADAS = 'im_tareas_completadas'
 function loadCompletadas(): Record<string, string> {
-  try { return JSON.parse(localStorage.getItem(KEY_COMPLETADAS) ?? '{}') } catch { return {} }
+  try { return JSON.parse(kv.get(KEY_COMPLETADAS) ?? '{}') } catch { return {} }
 }
 const PRIO_STYLE: Record<Prioridad, { dot: string; label: string; cls: string }> = {
   alta:  { dot: 'bg-red-400',    label: 'Alta',  cls: 'text-red-400' },

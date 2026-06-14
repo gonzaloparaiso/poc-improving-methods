@@ -4,6 +4,7 @@ import {
   type Bloque, type Programa,
 } from '../types'
 import { saveKV } from '../lib/storage'
+import * as kv from '../lib/kv'
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
@@ -49,7 +50,7 @@ function instanciarPrograma(programa: Programa, fechaInicio: string): SemanaCale
 // ── Storage ───────────────────────────────────────────────────────────────────
 const KEY = 'im_calendarios'
 function load<T>(key: string, fb: T): T {
-  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fb } catch { return fb }
+  try { const r = kv.get(key); return r ? JSON.parse(r) : fb } catch { return fb }
 }
 function save<T>(key: string, v: T) {
   try {

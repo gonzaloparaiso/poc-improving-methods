@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import { type Programa, type Bloque, type Semana, type DiaPrograma, type Adjunto } from '../types'
 import { saveKV } from '../lib/storage'
+import * as kv from '../lib/kv'
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
@@ -23,7 +24,7 @@ const KEY_PROGRAMAS  = 'im_programas'
 const KEY_PLANTILLAS = 'im_plantillas'
 
 function load<T>(key: string, fallback: T): T {
-  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback }
+  try { const r = kv.get(key); return r ? JSON.parse(r) : fallback }
   catch { return fallback }
 }
 function save<T>(key: string, val: T) {

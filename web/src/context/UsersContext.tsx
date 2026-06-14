@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import { type Usuario } from '../types'
 import { saveKV, apiCreateUser, refreshFromServer } from '../lib/storage'
+import * as kv from '../lib/kv'
 
 // ─── Datos iniciales ──────────────────────────────────────────────────────────
 const INITIAL_USERS: Usuario[] = [
@@ -22,7 +23,7 @@ const STORAGE_KEY = 'im_users'
 
 function loadUsers(): Usuario[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = kv.get(STORAGE_KEY)
     if (!raw) return INITIAL_USERS
     const parsed: Usuario[] = JSON.parse(raw)
     // Migración: si algún usuario antiguo no tiene username/password, lo inicializamos

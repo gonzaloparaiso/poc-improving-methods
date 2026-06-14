@@ -1,5 +1,8 @@
 // Capa de persistencia + sesión. El servidor (SQLite) es la fuente de verdad
-// y localStorage queda como caché local. Todas las peticiones llevan el token.
+// y la caché local (IndexedDB vía ./kv) guarda una copia. Todas las peticiones
+// llevan el token. Los tokens siguen en sessionStorage (son pequeños y de sesión).
+
+import * as kv from './kv'
 
 const API = '/api'
 
@@ -82,17 +85,17 @@ export async function refreshFromServer(): Promise<void> {
   if (!res.ok) return
   const remote = (await res.json()) as Record<string, unknown>
   for (const key of SYNC_KEYS) {
-    if (remote[key] !== undefined && remote[key] !== null) localStorage.setItem(key, JSON.stringify(remote[key]))
-    else localStorage.removeItem(key)
+    if (remote[key] !== undefined && remote[key] !== null) kv.set(key, JSON.stringify(remote[key]))
+    else kv.remove(key)
   }
   window.dispatchEvent(new Event('im-data-refreshed'))
 }
 
 // ── Persistencia (panel) ──────────────────────────────────────────────────────
-/** Guarda en localStorage (caché) y empuja al servidor en segundo plano */
+/** Guarda en la caché local (IndexedDB) y empuja al servidor en segundo plano */
 export function saveKV(key: string, value: unknown) {
   const serialized = JSON.stringify(value)
-  localStorage.setItem(key, serialized)
+  kv.set(key, serialized)
   void fetch(`${API}/data/${key}`, {
     method: 'PUT',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
@@ -117,8 +120,8 @@ export async function bootSync(): Promise<void> {
       if (!res.ok) return
       const remote = (await res.json()) as Record<string, unknown>
       for (const key of SYNC_KEYS) {
-        if (remote[key] !== undefined && remote[key] !== null) localStorage.setItem(key, JSON.stringify(remote[key]))
-        else localStorage.removeItem(key)
+        if (remote[key] !== undefined && remote[key] !== null) kv.set(key, JSON.stringify(remote[key]))
+        else kv.remove(key)
       }
     } else if (cliente) {
       const res = await fetch(`${API}/portal/me`, { headers: { Authorization: `Bearer ${cliente}` }, signal: AbortSignal.timeout(8000) })
@@ -126,9 +129,9 @@ export async function bootSync(): Promise<void> {
       if (!res.ok) return
       const me = await res.json() as Record<string, unknown>
       // Escribir solo las colecciones que el portal necesita (datos del propio cliente)
-      localStorage.setItem('im_clientes', JSON.stringify([me.cliente]))
+      kv.set('im_clientes', JSON.stringify([me.cliente]))
       for (const key of ['im_suscripciones_clientes', 'im_suscripciones_catalogo', 'im_calendarios', 'im_ejercicios']) {
-        localStorage.setItem(key, JSON.stringify(me[key] ?? []))
+        kv.set(key, JSON.stringify(me[key] ?? []))
       }
     }
   } catch (err) {

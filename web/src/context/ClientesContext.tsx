@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import { type Cliente, type CatalogoSuscripcion, type SuscripcionCliente, type TipoSuscripcion, type ProgramaAsociado } from '../types'
 import { saveKV, apiCreateProduct, refreshFromServer } from '../lib/storage'
+import * as kv from '../lib/kv'
 
 /** Migra un catalogo item antiguo al nuevo formato (programas[] + precio/prueba) */
 function migrarCatalogo(raw: Record<string, unknown>): CatalogoSuscripcion {
@@ -46,7 +47,7 @@ const KEY_SUSCS       = 'im_suscripciones_clientes'
 const NOMBRE_TEST = 'Test'
 
 function load<T>(key: string, fallback: T): T {
-  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback }
+  try { const r = kv.get(key); return r ? JSON.parse(r) : fallback }
   catch { return fallback }
 }
 function save<T>(key: string, val: T) { saveKV(key, val) }
