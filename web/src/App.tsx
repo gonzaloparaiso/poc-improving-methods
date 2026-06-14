@@ -16,6 +16,7 @@ import Clientes from './pages/Clientes'
 import Suscripciones from './pages/Suscripciones'
 import Planificacion from './pages/Planificacion'
 import ClienteLogin from './pages/portal/ClienteLogin'
+import ClienteReset from './pages/portal/ClienteReset'
 import PortalCliente from './pages/portal/PortalCliente'
 
 export interface User {
@@ -89,6 +90,7 @@ function App() {
               path="/portal/login"
               element={cliente ? <Navigate to="/portal" replace /> : <ClienteLogin onLogin={loginCliente} />}
             />
+            <Route path="/portal/reset" element={<ClienteReset />} />
             <Route
               path="/portal"
               element={

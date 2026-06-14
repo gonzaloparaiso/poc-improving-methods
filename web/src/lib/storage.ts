@@ -80,6 +80,14 @@ export const apiAssignSubscription = (clienteId: string, b: unknown) => apiPost(
 export const apiPortalChangePassword = (actual: string, nueva: string) =>
   apiPost('/portal/change-password', { actual, nueva })
 
+/** Solicita un email de restablecimiento (público). Siempre responde ok. */
+export const apiForgotPassword = (email: string) =>
+  apiPost('/portal/forgot-password', { email })
+
+/** Fija una nueva contraseña con el token recibido por email (público). */
+export const apiResetPassword = (token: string, nueva: string) =>
+  apiPost('/portal/reset-password', { token, nueva })
+
 /** Re-descarga los datos del servidor, reescribe la caché local y avisa a los
  *  contexts para que refresquen su estado (evento 'im-data-refreshed'). */
 export async function refreshFromServer(): Promise<void> {

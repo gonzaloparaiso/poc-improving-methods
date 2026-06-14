@@ -4,9 +4,21 @@ const http = require('http')
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
+const tls = require('tls')
 const { DatabaseSync } = require('node:sqlite')
 
 const PORT = process.env.PORT || 3001
+
+// ── Email (SMTP, p.ej. Google) — opcional vía variables de entorno ───────────
+const SMTP = {
+  host: process.env.SMTP_HOST || '',          // p.ej. smtp.gmail.com
+  port: Number(process.env.SMTP_PORT || 465),  // 465 = SSL
+  user: process.env.SMTP_USER || '',           // p.ej. info@trainingnorte.com
+  pass: process.env.SMTP_PASS || '',           // app password de Google
+  from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
+}
+const APP_URL = process.env.APP_URL || ''      // base del enlace de reset (dominio); si vacío se deriva de la petición
+const PASSWORD_RESET_TTL = 60 * 60 * 1000      // 1 hora
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'data.db')
 const JSON_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json')
 const MAX_BODY = 30 * 1024 * 1024
@@ -31,6 +43,7 @@ for (const k of ARRAY_KEYS) db.exec(`CREATE TABLE IF NOT EXISTS "${k}" (ord INTE
 db.exec(`CREATE TABLE IF NOT EXISTS "${OBJECT_KEY}" (tarea_id TEXT PRIMARY KEY, completado_en TEXT NOT NULL)`)
 db.exec(`CREATE TABLE IF NOT EXISTS _meta (k TEXT PRIMARY KEY, v TEXT)`)
 db.exec(`CREATE TABLE IF NOT EXISTS _sessions (token TEXT PRIMARY KEY, tipo TEXT, sujeto_id TEXT, rol TEXT, expira INTEGER)`)
+db.exec(`CREATE TABLE IF NOT EXISTS _password_resets (token TEXT PRIMARY KEY, cliente_id TEXT, expira INTEGER)`)
 
 function getCollection(key) {
   if (key === OBJECT_KEY) {
@@ -133,8 +146,59 @@ function getSesion(req) {
   return row
 }
 
-// ── Helpers de dominio ────────────────────────────────────────────────────────
-function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 9) }
+// ── Envío de email por SMTP (TLS implícito, sin dependencias) ─────────────────
+function smtpConfigured() { return Boolean(SMTP.host && SMTP.user && SMTP.pass) }
+
+function sendMail({ to, subject, html }) {
+  return new Promise((resolve, reject) => {
+    if (!smtpConfigured()) return reject(new Error('SMTP no configurado'))
+    const b64 = s => Buffer.from(s, 'utf8').toString('base64')
+    const fromAddr = SMTP.from || SMTP.user
+    // Dot-stuffing básico (líneas que empiezan por '.')
+    const safeHtml = String(html || '').replace(/\r?\n/g, '\r\n').replace(/\r\n\./g, '\r\n..')
+    const body =
+      `From: Training Norte <${fromAddr}>\r\n` +
+      `To: <${to}>\r\n` +
+      `Subject: ${subject}\r\n` +
+      `MIME-Version: 1.0\r\n` +
+      `Content-Type: text/html; charset=UTF-8\r\n\r\n` +
+      safeHtml + `\r\n.\r\n`
+
+    // Cada paso: el código que se ESPERA recibir y el comando a enviar tras validarlo
+    const steps = [
+      { expect: 220, cmd: `EHLO trainingnorte\r\n` },
+      { expect: 250, cmd: `AUTH LOGIN\r\n` },
+      { expect: 334, cmd: `${b64(SMTP.user)}\r\n` },
+      { expect: 334, cmd: `${b64(SMTP.pass)}\r\n` },
+      { expect: 235, cmd: `MAIL FROM:<${fromAddr}>\r\n` },
+      { expect: 250, cmd: `RCPT TO:<${to}>\r\n` },
+      { expect: 250, cmd: `DATA\r\n` },
+      { expect: 354, cmd: body },
+      { expect: 250, cmd: `QUIT\r\n`, resolveAfter: true },
+    ]
+
+    const socket = tls.connect({ host: SMTP.host, port: SMTP.port, servername: SMTP.host })
+    socket.setEncoding('utf8')
+    socket.setTimeout(15000, () => { socket.destroy(); reject(new Error('SMTP timeout')) })
+    socket.on('error', reject)
+
+    let i = 0, buf = ''
+    socket.on('data', chunk => {
+      buf += chunk
+      if (!buf.endsWith('\r\n')) return
+      const last = buf.trim().split('\r\n').pop()
+      if (/^\d{3}-/.test(last)) return // respuesta multilínea aún incompleta
+      const code = Number(last.slice(0, 3))
+      buf = ''
+      const step = steps[i]
+      if (!step) return
+      if (code !== step.expect) { socket.destroy(); return reject(new Error(`SMTP ${code}: ${last}`)) }
+      socket.write(step.cmd)
+      if (step.resolveAfter) { socket.end(); resolve(true); return }
+      i++
+    })
+  })
+}
 function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function siguienteLunes() { const h = new Date(); h.setHours(0, 0, 0, 0); const dow = h.getDay(); const d = new Date(h); d.setDate(h.getDate() + (dow === 1 ? 0 : (1 - dow + 7) % 7)); return d.toISOString().split('T')[0] }
 function addDays(iso, n) { const d = new Date(iso); d.setDate(d.getDate() + n); return d.toISOString().split('T')[0] }
@@ -263,6 +327,50 @@ const server = http.createServer(async (req, res) => {
       if (!c || !verifyPassword(b.password || '', c.password)) throw httpErr(401, 'Credenciales incorrectas o cliente inactivo')
       const token = crearSesion('cliente', c.id, '')
       return json(res, 200, { token, cliente: sinPassword(c) })
+    }
+
+    // ── Reset de contraseña olvidada (público) ──
+    if (p === '/api/portal/forgot-password' && method === 'POST') {
+      const b = await readBody(req)
+      const email = String(b.email || b.identificador || '').trim().toLowerCase()
+      const c = getCollection('im_clientes').find(x => x.activo && (x.email || '').toLowerCase() === email)
+      if (c && c.email) {
+        db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ?`).run(c.id) // invalida anteriores
+        const rtoken = crypto.randomBytes(32).toString('hex')
+        db.prepare(`INSERT INTO _password_resets (token, cliente_id, expira) VALUES (?,?,?)`).run(rtoken, c.id, Date.now() + PASSWORD_RESET_TTL)
+        const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
+        const link = `${base}/portal/reset?token=${rtoken}`
+        const html =
+          `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto">` +
+          `<h2 style="color:#111">Restablecer tu contraseña</h2>` +
+          `<p>Hola ${c.nombre || ''}, hemos recibido una solicitud para restablecer la contraseña de tu acceso a Training Norte.</p>` +
+          `<p><a href="${link}" style="display:inline-block;background:#f5c300;color:#111;font-weight:bold;padding:12px 20px;border-radius:8px;text-decoration:none">Crear nueva contraseña</a></p>` +
+          `<p style="color:#666;font-size:13px">El enlace caduca en 1 hora. Si no has sido tú, ignora este correo.</p>` +
+          `<p style="color:#999;font-size:12px">${link}</p></div>`
+        sendMail({ to: c.email, subject: 'Restablecer tu contraseña · Training Norte', html })
+          .catch(err => console.warn('[email] no se pudo enviar el reset:', err.message))
+        if (!smtpConfigured()) console.log('[email] SMTP sin configurar. Enlace de reset:', link)
+      }
+      return json(res, 200, { ok: true }) // nunca revelamos si el email existe
+    }
+
+    if (p === '/api/portal/reset-password' && method === 'POST') {
+      const b = await readBody(req)
+      const rtoken = String(b.token || '')
+      const nueva = String(b.nueva || '')
+      if (nueva.length < 4) throw httpErr(400, 'La contraseña debe tener al menos 4 caracteres')
+      const row = db.prepare(`SELECT * FROM _password_resets WHERE token = ?`).get(rtoken)
+      if (!row || row.expira < Date.now()) {
+        if (row) db.prepare(`DELETE FROM _password_resets WHERE token = ?`).run(rtoken)
+        throw httpErr(400, 'El enlace no es válido o ha caducado')
+      }
+      const arr = getCollection('im_clientes')
+      const idx = arr.findIndex(c => c.id === row.cliente_id)
+      if (idx < 0) throw httpErr(404, 'Cliente no encontrado')
+      arr[idx] = { ...arr[idx], password: hashPassword(nueva) }
+      setCollection('im_clientes', arr)
+      db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ?`).run(row.cliente_id)
+      return json(res, 200, { ok: true })
     }
 
     // ── A partir de aquí, requiere sesión ──

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { type Cliente } from '../../types'
-import { loginCliente as apiLoginCliente, bootSync } from '../../lib/storage'
+import { loginCliente as apiLoginCliente, bootSync, apiForgotPassword } from '../../lib/storage'
 
 interface Props {
   onLogin: (c: Cliente) => void
@@ -11,6 +11,20 @@ export default function ClienteLogin({ onLogin }: Props) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Modo "olvidé mi contraseña"
+  const [modo, setModo] = useState<'login' | 'forgot'>('login')
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotSent, setForgotSent] = useState(false)
+  const [forgotLoading, setForgotLoading] = useState(false)
+
+  const handleForgot = async (e: FormEvent) => {
+    e.preventDefault()
+    setForgotLoading(true)
+    try { await apiForgotPassword(forgotEmail.trim()) } catch { /* nunca revelamos errores aquí */ }
+    setForgotSent(true)
+    setForgotLoading(false)
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -42,40 +56,87 @@ export default function ClienteLogin({ onLogin }: Props) {
         </div>
 
         <div className="card p-8 shadow-2xl shadow-black/50">
-          <h2 className="text-lg font-bold text-white mb-1">Hola 👋</h2>
-          <p className="text-tn-muted text-sm mb-6">Accede a tu planificación</p>
+          {modo === 'login' ? (
+            <>
+              <h2 className="text-lg font-bold text-white mb-1">Hola 👋</h2>
+              <p className="text-tn-muted text-sm mb-6">Accede a tu planificación</p>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="label">Email o usuario</label>
-              <input type="text" className="input-field" placeholder="correo@ejemplo.com"
-                value={identificador} onChange={e => setIdentificador(e.target.value)}
-                autoComplete="username" autoFocus required />
-            </div>
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="label">Email o usuario</label>
+                  <input type="text" className="input-field" placeholder="correo@ejemplo.com"
+                    value={identificador} onChange={e => setIdentificador(e.target.value)}
+                    autoComplete="username" autoFocus required />
+                </div>
 
-            <div>
-              <label className="label">Contraseña</label>
-              <input type="password" className="input-field" placeholder="••••••••"
-                value={password} onChange={e => setPassword(e.target.value)}
-                autoComplete="current-password" required />
-            </div>
+                <div>
+                  <label className="label">Contraseña</label>
+                  <input type="password" className="input-field" placeholder="••••••••"
+                    value={password} onChange={e => setPassword(e.target.value)}
+                    autoComplete="current-password" required />
+                </div>
 
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm font-medium">
-                {error}
+                {error && (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm font-medium">
+                    {error}
+                  </div>
+                )}
+
+                <button type="submit" className="btn-primary w-full text-center" disabled={loading}>
+                  {loading ? 'Accediendo...' : 'Entrar a mi entrenamiento'}
+                </button>
+              </form>
+
+              <div className="mt-4 text-center">
+                <button type="button" onClick={() => { setModo('forgot'); setForgotEmail(identificador); setError('') }}
+                  className="text-tn-muted text-sm hover:text-tn-yellow transition-colors">
+                  ¿Has olvidado tu contraseña?
+                </button>
               </div>
-            )}
 
-            <button type="submit" className="btn-primary w-full text-center" disabled={loading}>
-              {loading ? 'Accediendo...' : 'Entrar a mi entrenamiento'}
-            </button>
-          </form>
-
-          <div className="mt-6 pt-6 border-t border-tn-border text-center">
-            <a href="/login" className="text-tn-muted text-xs hover:text-tn-yellow transition-colors">
-              ¿Eres entrenador? Accede aquí
-            </a>
-          </div>
+              <div className="mt-6 pt-6 border-t border-tn-border text-center">
+                <a href="/login" className="text-tn-muted text-xs hover:text-tn-yellow transition-colors">
+                  ¿Eres entrenador? Accede aquí
+                </a>
+              </div>
+            </>
+          ) : forgotSent ? (
+            <div className="text-center py-4">
+              <div className="w-14 h-14 bg-tn-yellow/10 rounded-2xl flex items-center justify-center mb-4 mx-auto">
+                <svg className="w-7 h-7 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-bold text-white mb-2">Revisa tu correo</h2>
+              <p className="text-tn-muted text-sm mb-6">
+                Si <span className="text-white">{forgotEmail}</span> corresponde a una cuenta, te hemos enviado un enlace para crear una nueva contraseña. Caduca en 1 hora.
+              </p>
+              <button type="button" onClick={() => { setModo('login'); setForgotSent(false) }}
+                className="btn-secondary w-full">Volver al inicio</button>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-lg font-bold text-white mb-1">Recuperar contraseña</h2>
+              <p className="text-tn-muted text-sm mb-6">Te enviaremos un enlace a tu email para crear una nueva.</p>
+              <form onSubmit={handleForgot} className="space-y-5">
+                <div>
+                  <label className="label">Tu email</label>
+                  <input type="email" className="input-field" placeholder="correo@ejemplo.com"
+                    value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
+                    autoComplete="email" autoFocus required />
+                </div>
+                <button type="submit" className="btn-primary w-full text-center" disabled={forgotLoading}>
+                  {forgotLoading ? 'Enviando...' : 'Enviar enlace'}
+                </button>
+              </form>
+              <div className="mt-4 text-center">
+                <button type="button" onClick={() => { setModo('login'); setError('') }}
+                  className="text-tn-muted text-sm hover:text-tn-yellow transition-colors">
+                  Volver al inicio de sesión
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <p className="text-center text-tn-muted/50 text-xs mt-6">
