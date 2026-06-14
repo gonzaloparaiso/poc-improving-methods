@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import { type Cliente, type CatalogoSuscripcion, type SuscripcionCliente, type TipoSuscripcion, type ProgramaAsociado } from '../types'
-import { saveKV } from '../lib/storage'
+import { saveKV, apiCreateProduct, refreshFromServer } from '../lib/storage'
 
 /** Migra un catalogo item antiguo al nuevo formato (programas[] + precio/prueba) */
 function migrarCatalogo(raw: Record<string, unknown>): CatalogoSuscripcion {
@@ -51,6 +51,18 @@ function load<T>(key: string, fallback: T): T {
 }
 function save<T>(key: string, val: T) { saveKV(key, val) }
 
+function loadCatalogoState(): CatalogoSuscripcion[] {
+  return (load(KEY_CATALOGO, []) as Record<string, unknown>[]).map(migrarCatalogo)
+}
+function loadSuscsState(): SuscripcionCliente[] {
+  return load<SuscripcionCliente[]>(KEY_SUSCS, []).map(s => {
+    if (s.fechaFin) return s
+    const ini = new Date(s.fechaInicio); const fin = new Date(ini)
+    fin.setMonth(fin.getMonth() + 1); fin.setDate(fin.getDate() + 3)
+    return { ...s, fechaFin: `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}-${String(fin.getDate()).padStart(2, '0')}` }
+  })
+}
+
 // ─── Context value ────────────────────────────────────────────────────────────
 interface ClientesContextValue {
   // Clientes
@@ -62,7 +74,7 @@ interface ClientesContextValue {
 
   // Catálogo de suscripciones
   catalogo: CatalogoSuscripcion[]
-  crearCatalogo: (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }) => CatalogoSuscripcion
+  crearCatalogo: (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }) => Promise<CatalogoSuscripcion>
   editarCatalogo: (id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }>) => void
   borrarCatalogo: (id: string) => void
 
@@ -82,20 +94,15 @@ const Ctx = createContext<ClientesContextValue | null>(null)
 
 export function ClientesProvider({ children }: { children: ReactNode }) {
   const [clientes, setClientes]       = useState<Cliente[]>(() => load(KEY_CLIENTES, []))
-  const [catalogo, setCatalogo] = useState<CatalogoSuscripcion[]>(() =>
-    (load(KEY_CATALOGO, []) as Record<string, unknown>[]).map(migrarCatalogo)
-  )
-  const [suscripciones, setSuscs]     = useState<SuscripcionCliente[]>(() =>
-    load<SuscripcionCliente[]>(KEY_SUSCS, []).map(s => {
-      if (s.fechaFin) return s
-      // Migración: calcular fin = inicio + 1 mes + 3 días
-      const ini = new Date(s.fechaInicio)
-      const fin = new Date(ini)
-      fin.setMonth(fin.getMonth() + 1)
-      fin.setDate(fin.getDate() + 3)
-      return { ...s, fechaFin: `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}-${String(fin.getDate()).padStart(2, '0')}` }
-    })
-  )
+  const [catalogo, setCatalogo]       = useState<CatalogoSuscripcion[]>(loadCatalogoState)
+  const [suscripciones, setSuscs]     = useState<SuscripcionCliente[]>(loadSuscsState)
+
+  // Refrescar desde el servidor cuando otra operación lo solicita
+  useEffect(() => {
+    const h = () => { setClientes(load(KEY_CLIENTES, [])); setCatalogo(loadCatalogoState()); setSuscs(loadSuscsState()) }
+    window.addEventListener('im-data-refreshed', h)
+    return () => window.removeEventListener('im-data-refreshed', h)
+  }, [])
 
   const updClientes = useCallback((next: Cliente[]) => { setClientes(next); save(KEY_CLIENTES, next) }, [])
   const updCatalogo = useCallback((next: CatalogoSuscripcion[]) => { setCatalogo(next); save(KEY_CATALOGO, next) }, [])
@@ -161,11 +168,12 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
   }, [clientes, editarCliente])
 
   // ── Catálogo ──
-  const crearCatalogo = useCallback((data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }) => {
-    const nueva: CatalogoSuscripcion = { ...data, id: genId(), creadoEn: new Date().toISOString() }
-    updCatalogo([...catalogo, nueva])
+  // Crear producto pasa por la API REST (validación en el servidor)
+  const crearCatalogo = useCallback(async (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }) => {
+    const nueva = await apiCreateProduct(data) as CatalogoSuscripcion
+    await refreshFromServer()
     return nueva
-  }, [catalogo, updCatalogo])
+  }, [])
 
   const editarCatalogo = useCallback((id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }>) => {
     updCatalogo(catalogo.map(c => c.id === id ? { ...c, ...data } : c))

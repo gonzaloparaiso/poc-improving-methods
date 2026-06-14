@@ -71,7 +71,7 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
   // Programas ya seleccionados (para no repetir en el dropdown)
   const progIdsUsados = progs.map(p => p.programaId).filter(Boolean)
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!nombre.trim()) return setError('El nombre es obligatorio')
     const programasValidos = progs.filter(p => p.programaId)
@@ -88,19 +88,21 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
     const precioNum = parseFloat(precio.replace(',', '.')) || 0
     if (precioNum < 0) return setError('El precio no puede ser negativo')
 
+    const data = { nombre: nombre.trim(), programas: progFinal, tipo, precioMensual: precioNum, primerMesPrueba }
     setSaving(true)
-    setTimeout(() => {
-      const data = { nombre: nombre.trim(), programas: progFinal, tipo, precioMensual: precioNum, primerMesPrueba }
+    try {
       if (isEdit && item) {
         editarCatalogo(item.id, data)
         onSaved(item.id, progFinal)
       } else {
-        const nuevo = crearCatalogo(data)
+        const nuevo = await crearCatalogo(data)
         onSaved(nuevo.id, progFinal)
       }
-      setSaving(false)
       onClose()
-    }, 400)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar el producto')
+      setSaving(false)
+    }
   }
 
   return (

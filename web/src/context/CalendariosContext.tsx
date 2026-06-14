@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import {
   type CalendarioCliente, type SemanaCalendario, type DiaCalendario,
   type Bloque, type Programa,
@@ -85,6 +85,13 @@ const Ctx = createContext<CalendariosCtxValue | null>(null)
 
 export function CalendariosProvider({ children }: { children: ReactNode }) {
   const [calendarios, setCalendarios] = useState<CalendarioCliente[]>(() => load(KEY, []))
+
+  // Refrescar desde el servidor cuando otra operación lo solicita
+  useEffect(() => {
+    const h = () => setCalendarios(load(KEY, []))
+    window.addEventListener('im-data-refreshed', h)
+    return () => window.removeEventListener('im-data-refreshed', h)
+  }, [])
 
   const upd = useCallback((next: CalendarioCliente[]) => {
     setCalendarios(next); save(KEY, next)

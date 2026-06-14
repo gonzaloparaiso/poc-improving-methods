@@ -1,11 +1,6 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import { type Usuario } from '../types'
-import { saveKV } from '../lib/storage'
-
-// crypto.randomUUID() requiere HTTPS — usamos una alternativa compatible con HTTP
-function genId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
-}
+import { saveKV, apiCreateUser, refreshFromServer } from '../lib/storage'
 
 // ─── Datos iniciales ──────────────────────────────────────────────────────────
 const INITIAL_USERS: Usuario[] = [
@@ -45,23 +40,10 @@ function saveUsers(users: Usuario[]) {
   saveKV(STORAGE_KEY, users)
 }
 
-// ─── Helpers de autenticación (usados por Login) ──────────────────────────────
-export function loginConCredenciales(
-  username: string,
-  password: string,
-): Usuario | null {
-  const users = loadUsers()
-  return (
-    users.find(
-      u => u.activo && u.username === username && u.password === password,
-    ) ?? null
-  )
-}
-
 // ─── Context ──────────────────────────────────────────────────────────────────
 interface UsersContextValue {
   users: Usuario[]
-  crear: (data: Omit<Usuario, 'id' | 'creadoEn' | 'bajaEn'>) => void
+  crear: (data: Omit<Usuario, 'id' | 'creadoEn' | 'bajaEn'>) => Promise<void>
   editar: (id: string, data: Partial<Omit<Usuario, 'id' | 'creadoEn'>>) => void
   borrar: (id: string) => void
   toggleActivo: (id: string) => void
@@ -72,20 +54,23 @@ const UsersContext = createContext<UsersContextValue | null>(null)
 export function UsersProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<Usuario[]>(loadUsers)
 
+  // Refrescar desde el servidor cuando otra operación lo solicita
+  useEffect(() => {
+    const h = () => setUsers(loadUsers())
+    window.addEventListener('im-data-refreshed', h)
+    return () => window.removeEventListener('im-data-refreshed', h)
+  }, [])
+
   const update = useCallback((next: Usuario[]) => {
     setUsers(next)
     saveUsers(next)
   }, [])
 
-  const crear = useCallback((data: Omit<Usuario, 'id' | 'creadoEn' | 'bajaEn'>) => {
-    const nuevo: Usuario = {
-      ...data,
-      id: genId(),
-      creadoEn: new Date().toISOString(),
-      bajaEn: null,
-    }
-    update([...loadUsers(), nuevo])
-  }, [update])
+  // Crear pasa por la API REST (validación y hash en el servidor)
+  const crear = useCallback(async (data: Omit<Usuario, 'id' | 'creadoEn' | 'bajaEn'>) => {
+    await apiCreateUser(data)
+    await refreshFromServer()
+  }, [])
 
   const editar = useCallback((id: string, data: Partial<Omit<Usuario, 'id' | 'creadoEn'>>) => {
     const current = loadUsers()

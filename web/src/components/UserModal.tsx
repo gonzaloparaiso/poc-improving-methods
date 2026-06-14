@@ -14,7 +14,7 @@ const emptyForm = {
   username: '',
   password: '',
   passwordConfirm: '',
-  rol: 'cliente' as Rol,
+  rol: 'coach' as Rol,
   activo: true,
 }
 
@@ -48,7 +48,7 @@ export default function UserModal({ user, onClose }: Props) {
   const set = <K extends keyof typeof emptyForm>(key: K, value: (typeof emptyForm)[K]) =>
     setForm(p => ({ ...p, [key]: value }))
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
 
@@ -68,27 +68,29 @@ export default function UserModal({ user, onClose }: Props) {
     if (form.password && form.password.length < 4)
       return setError('La contraseña debe tener al menos 4 caracteres')
 
-    setSaving(true)
-    setTimeout(() => {
-      const datos = {
-        nombre:   form.nombre.trim(),
-        apellido: form.apellido.trim(),
-        email:    form.email.trim(),
-        username: form.username.trim(),
-        rol:      form.rol,
-        activo:   form.activo,
-        // En edición: solo cambiamos password si el campo no está vacío
-        ...(form.password ? { password: form.password } : {}),
-      }
+    const datos = {
+      nombre:   form.nombre.trim(),
+      apellido: form.apellido.trim(),
+      email:    form.email.trim(),
+      username: form.username.trim(),
+      rol:      form.rol,
+      activo:   form.activo,
+      // En edición: solo cambiamos password si el campo no está vacío
+      ...(form.password ? { password: form.password } : {}),
+    }
 
+    setSaving(true)
+    try {
       if (isEdit && user) {
         editar(user.id, datos)
       } else {
-        crear({ ...datos, password: form.password })
+        await crear({ ...datos, password: form.password })
       }
-      setSaving(false)
       onClose()
-    }, 500)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar')
+      setSaving(false)
+    }
   }
 
   return (

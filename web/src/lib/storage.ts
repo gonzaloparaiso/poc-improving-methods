@@ -56,6 +56,38 @@ export function logout() {
   sessionStorage.removeItem(TOKEN_CLIENTE)
 }
 
+// ── API REST de dominio ───────────────────────────────────────────────────────
+async function apiPost(path: string, body: unknown) {
+  const res = await fetch(`${API}${path}`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as { error?: string }).error || 'Error en la operación')
+  return data
+}
+
+export const apiCreateUser    = (b: unknown) => apiPost('/users', b)
+export const apiCreateProduct = (b: unknown) => apiPost('/products', b)
+export const apiCreateClient  = (b: unknown) => apiPost('/clients', b)
+export const apiAssignSubscription = (clienteId: string, b: unknown) => apiPost(`/clients/${clienteId}/subscriptions`, b)
+
+/** Re-descarga los datos del servidor, reescribe la caché local y avisa a los
+ *  contexts para que refresquen su estado (evento 'im-data-refreshed'). */
+export async function refreshFromServer(): Promise<void> {
+  const staff = sessionStorage.getItem(TOKEN_STAFF)
+  if (!staff) return
+  const res = await fetch(`${API}/data`, { headers: { Authorization: `Bearer ${staff}` } })
+  if (!res.ok) return
+  const remote = (await res.json()) as Record<string, unknown>
+  for (const key of SYNC_KEYS) {
+    if (remote[key] !== undefined && remote[key] !== null) localStorage.setItem(key, JSON.stringify(remote[key]))
+    else localStorage.removeItem(key)
+  }
+  window.dispatchEvent(new Event('im-data-refreshed'))
+}
+
 // ── Persistencia (panel) ──────────────────────────────────────────────────────
 /** Guarda en localStorage (caché) y empuja al servidor en segundo plano */
 export function saveKV(key: string, value: unknown) {

@@ -2,8 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion, type SuscripcionCliente, type ContactoCliente, CALENDAR_COLORS } from '../../types'
 import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
-import { useCalendarios, fmtFecha, siguienteLunes, addDays } from '../../context/CalendariosContext'
+import { useCalendarios, fmtFecha, siguienteLunes } from '../../context/CalendariosContext'
 import { usePermisos } from '../../hooks/usePermisos'
+import { apiAssignSubscription, refreshFromServer } from '../../lib/storage'
 import ClienteModal from '../../components/clientes/ClienteModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import CalendarioClienteView from './CalendarioClienteView'
@@ -29,11 +30,11 @@ interface Props {
 export default function ClienteDetalle({ cliente, onVolver }: Props) {
   const {
     catalogo, suscripciones,
-    asignarSuscripcion, desactivarSuscripcion, borrarSuscripcion, editarFechas, editarCliente,
+    desactivarSuscripcion, borrarSuscripcion, editarFechas, editarCliente,
     clientes,
   } = useClientes()
   const { programas } = usePlanificacion()
-  const { crearCalendario, calendariosDeCliente, borrarCalendario } = useCalendarios()
+  const { calendariosDeCliente, borrarCalendario } = useCalendarios()
   const { esAdmin } = usePermisos()
 
   const clienteActual = clientes.find(c => c.id === cliente.id) ?? cliente
@@ -118,35 +119,15 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     ? Math.min(96, Math.max(42, Math.round(((popularidad[recomendado.id] ?? 0) / totalActivasGlobal) * 100) + 42))
     : 0
 
-  // ── Calendarios ──────────────────────────────────────────────────────────────
-  const crearCalendariosParaCat = (cat: CatalogoSuscripcion, scId: string, fechaOverride?: string) => {
-    const ahora = new Date()
-    const hoyISO = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
-    cat.programas.forEach(pa => {
-      const programa = programas.find(p => p.id === pa.programaId)
-      if (!programa) return
-      let fecha: string
-      if (fechaOverride) {
-        fecha = fechaOverride
-      } else if (cat.tipo === 'recurrente') {
-        if (!pa.fechaInicio) {
-          fecha = siguienteLunes()
-        } else {
-          const finPrograma = addDays(pa.fechaInicio, programa.semanas.length * 7 - 1)
-          if (finPrograma < hoyISO) return
-          fecha = pa.fechaInicio
-        }
-      } else {
-        fecha = siguienteLunes()
-      }
-      crearCalendario(clienteActual.id, scId, programa, fecha)
-    })
+  // ── Asignar producto: pasa por la API (crea suscripción + calendarios server-side) ──
+  const asignarPorAPI = async (catalogoId: string, fechaInicio?: string) => {
+    try {
+      await apiAssignSubscription(clienteActual.id, fechaInicio ? { catalogoId, fechaInicio } : { catalogoId })
+      await refreshFromServer()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'No se pudo asignar el producto')
+    }
   }
-
-  const getLastSc = (catalogoId: string) =>
-    [...(JSON.parse(localStorage.getItem('im_suscripciones_clientes') ?? '[]') as {id:string;clienteId:string;catalogoId:string;activa:boolean}[])]
-      .filter(s => s.clienteId === clienteActual.id && s.catalogoId === catalogoId && s.activa)
-      .at(-1)
 
   const seleccionarCatalogo = (cat: CatalogoSuscripcion) => {
     const tieneRecurrenteSinFecha = cat.tipo === 'recurrente' && cat.programas.some(p => p.programaId && !p.fechaInicio)
@@ -155,24 +136,17 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
       setFechaPendiente(cat.programas[0]?.fechaInicio ?? siguienteLunes())
       setAsignarModal(false)
     } else {
-      asignarSuscripcion(clienteActual.id, cat.id)
-      setTimeout(() => {
-        const sc = getLastSc(cat.id)
-        if (sc) crearCalendariosParaCat(cat, sc.id)
-      }, 0)
       setAsignarModal(false)
+      void asignarPorAPI(cat.id)
     }
   }
 
   const confirmarRecurrente = () => {
     if (!catPendiente) return
     const fecha = getLunes(fechaPendiente)
-    asignarSuscripcion(clienteActual.id, catPendiente.id)
-    setTimeout(() => {
-      const sc = getLastSc(catPendiente.id)
-      if (sc) crearCalendariosParaCat(catPendiente, sc.id, fecha)
-    }, 0)
+    const catId = catPendiente.id
     setCatPendiente(null)
+    void asignarPorAPI(catId, fecha)
   }
 
   // ── Contactos ────────────────────────────────────────────────────────────────
