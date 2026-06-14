@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { type Cliente, type Bloque, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente } from '../../types'
 import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosContext'
 import { useEjercicios } from '../../context/EjerciciosContext'
@@ -147,7 +147,9 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
   const calsActivos = miscalendarios.filter(c => seleccionados.has(c.id))
   const semanas = useMemo(() => fusionarCalendarios(calsActivos), [calsActivos])
 
-  const [vista, setVista]         = useState<Vista>('semana')
+  // En móvil abrimos en vista 'día' (más cómoda); en escritorio, semana completa
+  const [vista, setVista]         = useState<Vista>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 1024 ? 'dia' : 'semana')
   const [semanaIdx, setSemanaIdx] = useState(0)
 
   // Indice del día actual relativo al inicio
@@ -159,6 +161,18 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
   // Estado para vista día: índice de día seleccionado dentro de la semana
   const [diaIdx, setDiaIdx] = useState(0)
+
+  // Al cargar, saltar a la semana y día de HOY (una sola vez)
+  const saltadoAHoy = useRef(false)
+  useEffect(() => {
+    if (saltadoAHoy.current || semanas.length === 0) return
+    if (idxHoy >= 0) {
+      setSemanaIdx(idxHoy)
+      const d = semanas[idxHoy].dias.findIndex(x => x.fecha === hoyISO)
+      if (d >= 0) setDiaIdx(d)
+    }
+    saltadoAHoy.current = true
+  }, [semanas, idxHoy, hoyISO])
 
   // Bloque seleccionado para ver detalle
   const [bloqueSel, setBloqueSel] = useState<{ bloque: BloqueConColor; fecha: string } | null>(null)
@@ -352,11 +366,11 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           <div className="w-12 h-12 bg-tn-yellow rounded-2xl flex items-center justify-center flex-shrink-0">
             <span className="text-tn-black font-black text-lg">{cliente.nombre.charAt(0).toUpperCase()}</span>
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-[8rem]">
             <h1 className="text-white font-black text-xl truncate">¡Hola, {cliente.nombre}!</h1>
             <p className="text-tn-muted text-sm capitalize">{fmtFechaLarga(hoyISO)}</p>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
             <div className="text-right">
               <p className="text-tn-yellow font-black text-2xl leading-none">{miscalendarios.length}</p>
               <p className="text-tn-muted text-xs">programa{miscalendarios.length !== 1 ? 's' : ''} activo{miscalendarios.length !== 1 ? 's' : ''}</p>
