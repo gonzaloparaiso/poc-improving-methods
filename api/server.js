@@ -11,10 +11,20 @@ const PORT = process.env.PORT || 3001
 // ── Email (Gmail API + cuenta de servicio con delegación de dominio) ──────────
 // DigitalOcean bloquea SMTP de salida, así que enviamos por la API de Gmail
 // sobre HTTPS. Config vía variables de entorno (todas opcionales):
+let _saEmail = process.env.GMAIL_SA_CLIENT_EMAIL || ''
+let _saKey = (process.env.GMAIL_SA_PRIVATE_KEY || '').replace(/\\n/g, '\n')
+// Preferimos leer el JSON de la cuenta de servicio desde un fichero (más robusto)
+if (process.env.GMAIL_SA_KEY_FILE) {
+  try {
+    const sa = JSON.parse(fs.readFileSync(process.env.GMAIL_SA_KEY_FILE, 'utf8'))
+    _saEmail = sa.client_email || _saEmail
+    _saKey = sa.private_key || _saKey
+  } catch (e) { console.error('[email] No se pudo leer GMAIL_SA_KEY_FILE:', e.message) }
+}
 const GMAIL = {
-  sender: process.env.GMAIL_SENDER || '',                          // info@trainingnorte.com
-  saEmail: process.env.GMAIL_SA_CLIENT_EMAIL || '',                // cuenta de servicio ...iam.gserviceaccount.com
-  saKey: (process.env.GMAIL_SA_PRIVATE_KEY || '').replace(/\\n/g, '\n'), // private_key del JSON
+  sender: process.env.GMAIL_SENDER || '',   // buzón remitente, p.ej. info@trainingnorte.com
+  saEmail: _saEmail,                          // cuenta de servicio
+  saKey: _saKey,                              // private_key (PEM)
 }
 const APP_URL = process.env.APP_URL || ''      // base del enlace de reset (dominio); si vacío se deriva de la petición
 const PASSWORD_RESET_TTL = 60 * 60 * 1000      // 1 hora
