@@ -1,0 +1,10 @@
+{
+  "name": "im-api",
+  "private": true,
+  "version": "1.0.0",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --experimental-sqlite server.js",
+    "test": "node --experimental-sqlite --test"
+  }
+}
