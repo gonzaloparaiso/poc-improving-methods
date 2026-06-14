@@ -69,6 +69,7 @@ export interface Ejercicio {
   nombre: string
   explicacion: string
   video: string
+  thumbnail?: string   // URL de miniatura (imagen). Opcional.
 }
 
 // ─── Clientes ─────────────────────────────────────────────────────────────────

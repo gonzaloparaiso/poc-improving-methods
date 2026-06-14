@@ -4,6 +4,7 @@ import { type Ejercicio } from '../../types'
 import { usePermisos } from '../../hooks/usePermisos'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import PromptDialog from '../../components/PromptDialog'
+import VideoPlayer from '../../components/VideoPlayer'
 
 // ── Modal crear/editar ────────────────────────────────────────────────────────
 function EjercicioModal({ ejercicio, onClose }: { ejercicio?: Ejercicio | null; onClose: () => void }) {
@@ -210,13 +211,9 @@ export default function EjerciciosList() {
                       <p className="text-tn-muted/50 text-sm italic">Sin explicación</p>
                     )}
                     {ej.video ? (
-                      <a href={ej.video} target="_blank" rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-tn-yellow text-sm font-medium hover:underline">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                        Ver vídeo
-                      </a>
+                      <div className="max-w-md">
+                        <VideoPlayer url={ej.video} poster={ej.thumbnail} title={ej.nombre} />
+                      </div>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 text-tn-muted text-xs">
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

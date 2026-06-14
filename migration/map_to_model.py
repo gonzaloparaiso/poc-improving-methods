@@ -34,8 +34,8 @@ def cronometro(b):
         parts.append(f"descanso {rt}")
     return ' · '.join(parts)
 
-# ---- ejercicios -> modelo {id,nombre,explicacion,video} ----
-ej_out = [{'id':e['id'],'nombre':e['nombre'],'explicacion':e['explicacion'],'video':e['video']} for e in exercises]
+# ---- ejercicios -> modelo {id,nombre,explicacion,video,thumbnail} ----
+ej_out = [{'id':e['id'],'nombre':e['nombre'],'explicacion':e['explicacion'],'video':e['video'],'thumbnail':e.get('thumbnail','')} for e in exercises]
 ej_ids = {e['id'] for e in ej_out}
 
 # ---- programas -> modelo ----

@@ -198,14 +198,18 @@ export default function BloqueModal({
                         type="button"
                         disabled={yaAñadido}
                         onClick={() => añadirEjercicio(ej.id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                        className={`w-full flex items-center gap-2.5 text-left px-3 py-2 rounded-lg text-sm transition-all ${
                           yaAñadido
                             ? 'text-tn-muted cursor-not-allowed'
                             : 'text-white hover:bg-tn-card hover:text-tn-yellow'
                         }`}
                       >
-                        <span className="font-medium">{ej.nombre}</span>
-                        {yaAñadido && <span className="ml-2 text-xs text-tn-muted">ya añadido</span>}
+                        {ej.thumbnail && (
+                          <img src={ej.thumbnail} alt="" loading="lazy"
+                            className="w-8 h-8 rounded object-cover bg-tn-card flex-shrink-0" />
+                        )}
+                        <span className="font-medium truncate">{ej.nombre}</span>
+                        {yaAñadido && <span className="ml-auto text-xs text-tn-muted flex-shrink-0">ya añadido</span>}
                       </button>
                     )
                   })}
@@ -235,11 +239,19 @@ export default function BloqueModal({
                   return (
                     <div key={ej.id} className="bg-tn-dark border border-tn-border rounded-xl p-4">
                       <div className="flex items-start justify-between gap-3 mb-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           <span className="w-6 h-6 rounded-full bg-tn-yellow/10 text-tn-yellow text-xs font-bold flex items-center justify-center flex-shrink-0">
                             {idx + 1}
                           </span>
-                          <span className="text-white font-semibold text-sm">
+                          {ejercicio?.thumbnail && (
+                            <img
+                              src={ejercicio.thumbnail}
+                              alt=""
+                              loading="lazy"
+                              className="w-10 h-10 rounded-lg object-cover bg-tn-card flex-shrink-0"
+                            />
+                          )}
+                          <span className="text-white font-semibold text-sm truncate">
                             {ejercicio?.nombre ?? 'Ejercicio desconocido'}
                           </span>
                         </div>
