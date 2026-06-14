@@ -76,6 +76,10 @@ export const apiCreateProduct = (b: unknown) => apiPost('/products', b)
 export const apiCreateClient  = (b: unknown) => apiPost('/clients', b)
 export const apiAssignSubscription = (clienteId: string, b: unknown) => apiPost(`/clients/${clienteId}/subscriptions`, b)
 
+/** El cliente del portal cambia su propia contraseña (verifica la actual). */
+export const apiPortalChangePassword = (actual: string, nueva: string) =>
+  apiPost('/portal/change-password', { actual, nueva })
+
 /** Re-descarga los datos del servidor, reescribe la caché local y avisa a los
  *  contexts para que refresquen su estado (evento 'im-data-refreshed'). */
 export async function refreshFromServer(): Promise<void> {

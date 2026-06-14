@@ -289,6 +289,22 @@ const server = http.createServer(async (req, res) => {
       })
     }
 
+    // ── Portal cliente: cambiar su propia contraseña ──
+    if (p === '/api/portal/change-password' && method === 'POST') {
+      if (ses.tipo !== 'cliente') throw httpErr(403, 'Solo clientes')
+      const b = await readBody(req)
+      const actual = String(b.actual || '')
+      const nueva = String(b.nueva || '')
+      if (nueva.length < 4) throw httpErr(400, 'La nueva contraseña debe tener al menos 4 caracteres')
+      const arr = getCollection('im_clientes')
+      const idx = arr.findIndex(c => c.id === ses.sujeto_id)
+      if (idx < 0) throw httpErr(404, 'Cliente no encontrado')
+      if (!verifyPassword(actual, arr[idx].password)) throw httpErr(400, 'La contraseña actual no es correcta')
+      arr[idx] = { ...arr[idx], password: hashPassword(nueva) }
+      setCollection('im_clientes', arr)
+      return json(res, 200, { ok: true })
+    }
+
     // ── Resto: solo staff ──
     if (ses.tipo !== 'staff') throw httpErr(403, 'Acceso restringido al personal')
     const esAdmin = ses.rol === 'administrador'

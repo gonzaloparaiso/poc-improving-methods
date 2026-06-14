@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, type FormEvent } from 'react'
 import { type Cliente, type Bloque, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente } from '../../types'
 import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosContext'
 import { useEjercicios } from '../../context/EjerciciosContext'
 import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import BloqueDetalleModal from './BloqueDetalleModal'
 import { exportarPDF, exportarExcel, exportarAimharder, exportarWodbuster } from './exporters'
+import { apiPortalChangePassword } from '../../lib/storage'
 
 interface Props {
   cliente: Cliente
@@ -803,7 +804,87 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
 // ─── Header ──────────────────────────────────────────────────────────────────
 
+function CambiarPasswordModal({ onClose }: { onClose: () => void }) {
+  const [actual, setActual] = useState('')
+  const [nueva, setNueva] = useState('')
+  const [confirmar, setConfirmar] = useState('')
+  const [error, setError] = useState('')
+  const [ok, setOk] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    setError('')
+    if (!actual) return setError('Introduce tu contraseña actual')
+    if (nueva.length < 4) return setError('La nueva contraseña debe tener al menos 4 caracteres')
+    if (nueva !== confirmar) return setError('Las contraseñas nuevas no coinciden')
+    setSaving(true)
+    try {
+      await apiPortalChangePassword(actual, nueva)
+      setOk(true)
+      setTimeout(onClose, 1500)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo cambiar la contraseña')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="card w-full sm:max-w-md sm:rounded-xl rounded-t-2xl rounded-b-none sm:rounded-b-xl">
+        <div className="flex items-center justify-between p-6 border-b border-tn-border">
+          <h3 className="text-white font-bold text-lg">Cambiar contraseña</h3>
+          <button onClick={onClose} className="text-tn-muted hover:text-white p-1">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        {ok ? (
+          <div className="p-8 text-center">
+            <div className="w-14 h-14 bg-green-500/10 rounded-2xl flex items-center justify-center mb-3 mx-auto">
+              <svg className="w-7 h-7 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-white font-bold">Contraseña actualizada</p>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="p-6 space-y-4">
+            <div>
+              <label className="label">Contraseña actual</label>
+              <input type="password" className="input-field" value={actual} autoFocus
+                onChange={e => setActual(e.target.value)} autoComplete="current-password" />
+            </div>
+            <div>
+              <label className="label">Nueva contraseña</label>
+              <input type="password" className="input-field" value={nueva}
+                onChange={e => setNueva(e.target.value)} autoComplete="new-password" />
+            </div>
+            <div>
+              <label className="label">Repetir nueva contraseña</label>
+              <input type="password" className="input-field" value={confirmar}
+                onChange={e => setConfirmar(e.target.value)} autoComplete="new-password" />
+            </div>
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">{error}</div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button type="button" className="btn-secondary flex-1" onClick={onClose}>Cancelar</button>
+              <button type="submit" className="btn-primary flex-1" disabled={saving}>
+                {saving ? 'Guardando...' : 'Cambiar'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function Header({ cliente, onLogout }: { cliente: Cliente; onLogout: () => void }) {
+  const [menu, setMenu] = useState(false)
+  const [cambiarPass, setCambiarPass] = useState(false)
   return (
     <header className="bg-tn-dark border-b border-tn-border px-4 lg:px-8 py-4 flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -813,23 +894,58 @@ function Header({ cliente, onLogout }: { cliente: Cliente; onLogout: () => void 
           <p className="text-tn-muted text-xs">Training Norte</p>
         </div>
       </div>
-      <div className="flex items-center gap-3">
-        <div className="text-right hidden sm:block">
-          <p className="text-white text-sm font-semibold">{cliente.nombre} {cliente.apellido}</p>
-          <p className="text-tn-muted text-xs">@{cliente.username}</p>
-        </div>
+
+      {/* Menú de usuario */}
+      <div className="relative">
         <button
-          onClick={onLogout}
-          className="flex items-center gap-1.5 px-3 py-2 text-tn-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-all text-sm font-medium"
-          title="Cerrar sesión"
+          onClick={() => setMenu(v => !v)}
+          className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-tn-card transition-all"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          <div className="text-right hidden sm:block">
+            <p className="text-white text-sm font-semibold leading-tight">{cliente.nombre} {cliente.apellido}</p>
+            <p className="text-tn-muted text-xs">@{cliente.username}</p>
+          </div>
+          <div className="w-9 h-9 bg-tn-yellow rounded-full flex items-center justify-center flex-shrink-0">
+            <span className="text-tn-black font-black text-sm">{cliente.nombre.charAt(0).toUpperCase()}</span>
+          </div>
+          <svg className={`w-4 h-4 text-tn-muted transition-transform ${menu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
           </svg>
-          <span className="hidden sm:inline">Salir</span>
         </button>
+
+        {menu && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
+            <div className="absolute right-0 top-full mt-2 w-56 card shadow-2xl z-50 overflow-hidden py-1">
+              <div className="px-4 py-2.5 border-b border-tn-border sm:hidden">
+                <p className="text-white text-sm font-semibold">{cliente.nombre} {cliente.apellido}</p>
+                <p className="text-tn-muted text-xs">@{cliente.username}</p>
+              </div>
+              <button
+                onClick={() => { setMenu(false); setCambiarPass(true) }}
+                className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-tn-dark transition-colors text-left text-white text-sm"
+              >
+                <svg className="w-4 h-4 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+                Cambiar contraseña
+              </button>
+              <button
+                onClick={onLogout}
+                className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-red-400/5 transition-colors text-left text-red-400 text-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Cerrar sesión
+              </button>
+            </div>
+          </>
+        )}
       </div>
+
+      {cambiarPass && <CambiarPasswordModal onClose={() => setCambiarPass(false)} />}
     </header>
   )
 }
