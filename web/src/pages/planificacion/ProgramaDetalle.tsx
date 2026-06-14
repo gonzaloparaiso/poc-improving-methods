@@ -21,23 +21,38 @@ type ModalFase =
 
 type ModalState = (ModalTarget & ModalFase) | null
 
+type Arrastre = { semanaId: string; diaIdx: number; bloqueId: string }
+interface DnD {
+  puedeMover: boolean
+  arrastrando: Arrastre | null
+  dropTarget: { semanaId: string; diaIdx: number } | null
+  onDragStart: (a: Arrastre) => void
+  onDragEnd: () => void
+  onHover: (semanaId: string, diaIdx: number) => void
+  onDrop: (semanaId: string, diaIdx: number) => void
+}
+
 // ── Sub-componente: grid semanal ──────────────────────────────────────────────
 function GridSemana({
   semana,
   onAñadir,
   onEditar,
   onBorrar,
+  onDuplicar,
   puedeCrear,
   puedeEditar,
   puedeBorrar,
+  dnd,
 }: {
   semana: Semana
   onAñadir: (semanaId: string, diaIdx: number) => void
   onEditar: (semanaId: string, diaIdx: number, bloque: Bloque) => void
   onBorrar: (semanaId: string, diaIdx: number, bloque: Bloque) => void
+  onDuplicar: (semanaId: string, diaIdx: number, bloque: Bloque) => void
   puedeCrear: boolean
   puedeEditar: boolean
   puedeBorrar: boolean
+  dnd: DnD
 }) {
   const { ejercicios } = useEjercicios()
   return (
@@ -45,23 +60,56 @@ function GridSemana({
       <div className="grid grid-cols-7 gap-2 min-w-[700px]">
         {DIAS_SEMANA.map((dia, diaIdx) => {
           const diaData = semana.dias[diaIdx]
+          const esDestino = dnd.arrastrando &&
+            dnd.dropTarget?.semanaId === semana.id && dnd.dropTarget?.diaIdx === diaIdx &&
+            !(dnd.arrastrando.semanaId === semana.id && dnd.arrastrando.diaIdx === diaIdx)
+
           return (
-            <div key={dia} className="flex flex-col gap-2">
+            <div
+              key={dia}
+              className="flex flex-col gap-2"
+              onDragOver={dnd.puedeMover && dnd.arrastrando ? (e) => { e.preventDefault(); dnd.onHover(semana.id, diaIdx) } : undefined}
+              onDrop={dnd.puedeMover && dnd.arrastrando ? (e) => { e.preventDefault(); dnd.onDrop(semana.id, diaIdx) } : undefined}
+            >
               {/* Cabecera día */}
               <div className="text-center">
                 <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider">{dia.slice(0, 3)}</p>
               </div>
 
               {/* Bloques */}
-              <div className="flex-1 space-y-2">
-                {diaData?.bloques.map(bloque => (
-                  <div key={bloque.id} className="card p-3 group">
+              <div className={`flex-1 space-y-2 rounded-xl transition-all ${esDestino ? 'ring-2 ring-tn-yellow ring-inset bg-tn-yellow/5' : ''}`}>
+                {diaData?.bloques.map(bloque => {
+                  const arrastrandoEste = dnd.arrastrando?.bloqueId === bloque.id &&
+                    dnd.arrastrando.semanaId === semana.id && dnd.arrastrando.diaIdx === diaIdx
+                  return (
+                  <div
+                    key={bloque.id}
+                    draggable={dnd.puedeMover}
+                    onDragStart={dnd.puedeMover ? (e) => {
+                      e.dataTransfer.effectAllowed = 'move'
+                      dnd.onDragStart({ semanaId: semana.id, diaIdx, bloqueId: bloque.id })
+                    } : undefined}
+                    onDragEnd={dnd.puedeMover ? dnd.onDragEnd : undefined}
+                    className={`card p-3 group ${dnd.puedeMover ? 'cursor-grab active:cursor-grabbing' : ''} ${arrastrandoEste ? 'opacity-40' : ''}`}
+                  >
                     <div className="flex items-start justify-between gap-1 mb-1.5">
                       <p className="text-white font-semibold text-xs leading-tight line-clamp-2">{bloque.nombre}</p>
                       <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                        {puedeCrear && (
+                          <button
+                            onClick={() => onDuplicar(semana.id, diaIdx, bloque)}
+                            title="Duplicar bloque"
+                            className="p-1 text-tn-muted hover:text-tn-yellow rounded transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          </button>
+                        )}
                         {puedeEditar && (
                           <button
                             onClick={() => onEditar(semana.id, diaIdx, bloque)}
+                            title="Editar"
                             className="p-1 text-tn-muted hover:text-white rounded transition-colors"
                           >
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -72,6 +120,7 @@ function GridSemana({
                         {puedeBorrar && (
                           <button
                             onClick={() => onBorrar(semana.id, diaIdx, bloque)}
+                            title="Eliminar"
                             className="p-1 text-tn-muted hover:text-red-400 rounded transition-colors"
                           >
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,7 +154,8 @@ function GridSemana({
                       </div>
                     )}
                   </div>
-                ))}
+                  )
+                })}
 
                 {/* Botón añadir */}
                 {puedeCrear && (
@@ -130,13 +180,32 @@ function GridSemana({
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function ProgramaDetalle({ programa, onVolver }: Props) {
-  const { añadirBloqueAlDia, editarBloqueDelDia, borrarBloqueDelDia, añadirSemana, borrarSemana, plantillas } = usePlanificacion()
+  const { añadirBloqueAlDia, editarBloqueDelDia, borrarBloqueDelDia, duplicarBloqueDelDia, moverBloque, añadirSemana, borrarSemana, plantillas } = usePlanificacion()
   const { puede } = usePermisos()
 
   const [vista, setVista] = useState<number | 'todas'>(0)
   const [modal, setModal] = useState<ModalState>(null)
   const [borrarBloque, setBorrarBloque] = useState<{ semanaId: string; diaIdx: number; bloque: Bloque } | null>(null)
   const [borrarSemanaConf, setBorrarSemanaConf] = useState<string | null>(null)
+
+  // Drag & drop de bloques entre días/semanas
+  const [arrastrando, setArrastrando] = useState<Arrastre | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ semanaId: string; diaIdx: number } | null>(null)
+
+  const dnd: DnD = {
+    puedeMover: puede('planificaciones', 'editar'),
+    arrastrando,
+    dropTarget,
+    onDragStart: (a) => setArrastrando(a),
+    onDragEnd: () => { setArrastrando(null); setDropTarget(null) },
+    onHover: (semanaId, diaIdx) => setDropTarget({ semanaId, diaIdx }),
+    onDrop: (semanaId, diaIdx) => {
+      if (arrastrando) moverBloque(programa.id, arrastrando, { semanaId, diaIdx })
+      setArrastrando(null); setDropTarget(null)
+    },
+  }
+  const onDuplicar = (semanaId: string, diaIdx: number, bloque: Bloque) =>
+    duplicarBloqueDelDia(programa.id, semanaId, diaIdx, bloque.id)
 
   const semanaActual = typeof vista === 'number' ? programa.semanas[vista] : null
 
@@ -248,9 +317,11 @@ export default function ProgramaDetalle({ programa, onVolver }: Props) {
           onAñadir={abrirAñadir}
           onEditar={abrirEditar}
           onBorrar={(sid, di, b) => setBorrarBloque({ semanaId: sid, diaIdx: di, bloque: b })}
+          onDuplicar={onDuplicar}
           puedeCrear={puede('planificaciones', 'crear')}
           puedeEditar={puede('planificaciones', 'editar')}
           puedeBorrar={puede('planificaciones', 'borrar')}
+          dnd={dnd}
         />
       )}
 
@@ -271,9 +342,11 @@ export default function ProgramaDetalle({ programa, onVolver }: Props) {
                 onAñadir={abrirAñadir}
                 onEditar={abrirEditar}
                 onBorrar={(sid, di, b) => setBorrarBloque({ semanaId: sid, diaIdx: di, bloque: b })}
+                onDuplicar={onDuplicar}
                 puedeCrear={puede('planificaciones', 'crear')}
                 puedeEditar={puede('planificaciones', 'editar')}
                 puedeBorrar={puede('planificaciones', 'borrar')}
+                dnd={dnd}
               />
             </div>
           ))}

@@ -49,6 +49,9 @@ interface PlanificacionContextValue {
   añadirBloqueAlDia: (programaId: string, semanaId: string, diaIdx: number, bloque: Omit<Bloque, 'id' | 'creadoEn'>) => void
   editarBloqueDelDia: (programaId: string, semanaId: string, diaIdx: number, bloqueId: string, data: Partial<Omit<Bloque, 'id' | 'creadoEn'>>) => void
   borrarBloqueDelDia: (programaId: string, semanaId: string, diaIdx: number, bloqueId: string) => void
+  duplicarBloqueDelDia: (programaId: string, semanaId: string, diaIdx: number, bloqueId: string) => void
+  /** Mueve (o copia) un bloque de un día a otro, posiblemente en otra semana */
+  moverBloque: (programaId: string, origen: { semanaId: string; diaIdx: number; bloqueId: string }, destino: { semanaId: string; diaIdx: number }, copiar?: boolean) => void
 
   // Plantillas de bloques
   plantillas: Bloque[]
@@ -209,6 +212,78 @@ export function PlanificacionProvider({ children }: { children: ReactNode }) {
     }))
   }, [mutarPrograma])
 
+  /** Copia profunda de un bloque con ids nuevos (bloque + ejercicios) */
+  const clonarBloque = (b: Bloque): Bloque => ({
+    ...JSON.parse(JSON.stringify(b)),
+    id: genId(),
+    creadoEn: new Date().toISOString(),
+    esPlantilla: false,
+    ejercicios: b.ejercicios.map(e => ({ ...e, id: genId() })),
+  })
+
+  const duplicarBloqueDelDia = useCallback((
+    programaId: string, semanaId: string, diaIdx: number, bloqueId: string,
+  ) => {
+    mutarPrograma(programaId, p => ({
+      ...p,
+      semanas: p.semanas.map(s => s.id !== semanaId ? s : {
+        ...s,
+        dias: s.dias.map((d, i) => {
+          if (i !== diaIdx) return d
+          const idx = d.bloques.findIndex(b => b.id === bloqueId)
+          if (idx < 0) return d
+          const copia = clonarBloque(d.bloques[idx])
+          const bloques = [...d.bloques]
+          bloques.splice(idx + 1, 0, copia) // insertar justo después del original
+          return { ...d, bloques }
+        }),
+      }),
+    }))
+  }, [mutarPrograma])
+
+  const moverBloque = useCallback((
+    programaId: string,
+    origen: { semanaId: string; diaIdx: number; bloqueId: string },
+    destino: { semanaId: string; diaIdx: number },
+    copiar = false,
+  ) => {
+    // Mismo día y mismo sitio → nada que hacer
+    if (!copiar && origen.semanaId === destino.semanaId && origen.diaIdx === destino.diaIdx) return
+
+    mutarPrograma(programaId, p => {
+      // Localizar el bloque de origen
+      let bloque: Bloque | undefined
+      p.semanas.forEach(s => {
+        if (s.id !== origen.semanaId) return
+        const dia = s.dias[origen.diaIdx]
+        bloque = dia?.bloques.find(b => b.id === origen.bloqueId)
+      })
+      if (!bloque) return p
+
+      const aInsertar = copiar ? clonarBloque(bloque) : bloque
+
+      return {
+        ...p,
+        semanas: p.semanas.map(s => {
+          let dias = s.dias
+          // Quitar del origen (si no es copia)
+          if (!copiar && s.id === origen.semanaId) {
+            dias = dias.map((d, i) => i !== origen.diaIdx ? d : {
+              ...d, bloques: d.bloques.filter(b => b.id !== origen.bloqueId),
+            })
+          }
+          // Añadir al destino
+          if (s.id === destino.semanaId) {
+            dias = dias.map((d, i) => i !== destino.diaIdx ? d : {
+              ...d, bloques: [...d.bloques, aInsertar],
+            })
+          }
+          return dias === s.dias ? s : { ...s, dias }
+        }),
+      }
+    })
+  }, [mutarPrograma])
+
   // ── Plantillas ──
   const crearPlantilla = useCallback((data: Omit<Bloque, 'id' | 'creadoEn' | 'esPlantilla'>) => {
     const nueva: Bloque = { ...data, id: genId(), esPlantilla: true, creadoEn: new Date().toISOString() }
@@ -242,7 +317,7 @@ export function PlanificacionProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       programas, crearPrograma, editarPrograma, borrarPrograma, añadirSemana, borrarSemana,
       añadirAdjunto, borrarAdjunto, clonarPrograma,
-      añadirBloqueAlDia, editarBloqueDelDia, borrarBloqueDelDia,
+      añadirBloqueAlDia, editarBloqueDelDia, borrarBloqueDelDia, duplicarBloqueDelDia, moverBloque,
       plantillas, crearPlantilla, editarPlantilla, borrarPlantilla, clonarPlantilla,
     }}>
       {children}
