@@ -127,7 +127,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
   const [menuExport, setMenuExport] = useState(false)
 
   // Renovación de suscripción
-  const [renovar, setRenovar] = useState<{ catalogoId: string; nombre: string; precio: number } | null>(null)
+  const [renovar, setRenovar] = useState<{ catalogoId: string; nombre: string; precio: number; mode: 'renew' | 'resubscribe' } | null>(null)
 
   const nombreCompleto = `${cliente.nombre}${cliente.apellido ? ' ' + cliente.apellido : ''}`
   const calsAExportar = calsActivos.length > 0 ? calsActivos : miscalendarios
@@ -260,7 +260,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                         </div>
                         <button
                           type="button"
-                          onClick={() => setRenovar({ catalogoId: cat!.id, nombre: cat!.nombre, precio: cat!.precioMensual })}
+                          onClick={() => setRenovar({ catalogoId: cat!.id, nombre: cat!.nombre, precio: cat!.precioMensual, mode: 'renew' })}
                           className="btn-primary w-full flex items-center justify-center gap-2 text-sm py-2.5"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -438,7 +438,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                       </a>
                       <button
                         type="button"
-                        onClick={() => setRenovar({ catalogoId: cat!.id, nombre: cat!.nombre, precio: cat!.precioMensual })}
+                        onClick={() => setRenovar({ catalogoId: cat!.id, nombre: cat!.nombre, precio: cat!.precioMensual, mode: 'renew' })}
                         className="btn-primary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -729,6 +729,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                   </div>
                   <button
                     type="button"
+                    onClick={() => setRenovar({ catalogoId: cat!.id, nombre: cat!.nombre, precio: cat!.precioMensual, mode: 'resubscribe' })}
                     className="btn-secondary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -760,6 +761,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           catalogoId={renovar.catalogoId}
           nombre={renovar.nombre}
           precio={renovar.precio}
+          mode={renovar.mode}
           onClose={() => setRenovar(null)}
         />
       )}
@@ -769,14 +771,15 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
 // ─── Header ──────────────────────────────────────────────────────────────────
 
-function RenovarModal({ catalogoId, nombre, precio, onClose }: { catalogoId: string; nombre: string; precio: number; onClose: () => void }) {
+function RenovarModal({ catalogoId, nombre, precio, mode, onClose }: { catalogoId: string; nombre: string; precio: number; mode: 'renew' | 'resubscribe'; onClose: () => void }) {
   const [estado, setEstado] = useState<'confirm' | 'loading' | 'paid'>('confirm')
   const [error, setError] = useState('')
+  const esReactivar = mode === 'resubscribe'
 
   const confirmar = async () => {
     setError(''); setEstado('loading')
     try {
-      const r = await apiPortalRenew(catalogoId)
+      const r = await apiPortalRenew(catalogoId, mode)
       if (r.status === 'paid') { setEstado('paid'); return }
       if (r.status === 'needs_action' && r.payment_url) { window.location.href = r.payment_url; return }
       setError('No se pudo completar la renovación'); setEstado('confirm')
@@ -789,7 +792,7 @@ function RenovarModal({ catalogoId, nombre, precio, onClose }: { catalogoId: str
     <div className="fixed inset-0 bg-black/80 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="card w-full sm:max-w-md sm:rounded-xl rounded-t-2xl rounded-b-none sm:rounded-b-xl">
         <div className="flex items-center justify-between p-6 border-b border-tn-border">
-          <h3 className="text-white font-bold text-lg">Renovar suscripción</h3>
+          <h3 className="text-white font-bold text-lg">{esReactivar ? 'Reactivar suscripción' : 'Renovar suscripción'}</h3>
           <button onClick={onClose} className="text-tn-muted hover:text-white p-1" disabled={estado === 'loading'}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -803,14 +806,14 @@ function RenovarModal({ catalogoId, nombre, precio, onClose }: { catalogoId: str
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="text-white font-bold">¡Renovación completada!</p>
+            <p className="text-white font-bold">{esReactivar ? '¡Suscripción reactivada!' : '¡Renovación completada!'}</p>
             <p className="text-tn-muted text-sm mt-1">Hemos cobrado tu cuota habitual. Gracias 💪</p>
             <button onClick={onClose} className="btn-primary w-full mt-6">Cerrar</button>
           </div>
         ) : (
           <div className="p-6 space-y-4">
             <p className="text-tn-muted text-sm">
-              Vas a renovar <span className="text-white font-semibold">{nombre}</span>
+              Vas a {esReactivar ? <>crear una <span className="text-white font-semibold">nueva suscripción</span> de</> : 'renovar'} <span className="text-white font-semibold">{nombre}</span>
               {precio ? <> por <span className="text-white font-semibold">{precio} €</span></> : null}. Se cobrará a tu <span className="text-white">método de pago habitual</span>; no tienes que introducir nada.
             </p>
             {error && (

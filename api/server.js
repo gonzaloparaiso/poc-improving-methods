@@ -436,12 +436,13 @@ const server = http.createServer(async (req, res) => {
       const cat = getCollection('im_suscripciones_catalogo').find(c => c.id === b.catalogoId)
       if (!cat) throw httpErr(404, 'Producto no encontrado')
       if (!cat.wcProductId) throw httpErr(400, 'Este producto no admite renovación online')
+      const mode = b.mode === 'resubscribe' ? 'resubscribe' : 'renew'
       let wres, data
       try {
         wres = await fetch(RENEW.url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-tn-secret': RENEW.secret },
-          body: JSON.stringify({ email: cli.email, product_id: cat.wcProductId }),
+          body: JSON.stringify({ email: cli.email, product_id: cat.wcProductId, mode }),
           signal: AbortSignal.timeout(25000),
         })
         data = await wres.json().catch(() => ({}))
