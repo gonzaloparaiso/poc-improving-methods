@@ -126,6 +126,7 @@ export interface CatalogoSuscripcion {
   precioMensual: number           // € al mes
   primerMesPrueba: boolean        // true = el primer mes no se cobra
   creadoEn: string
+  wcProductId?: number | null     // ID del producto en WooCommerce (para renovar)
 }
 
 export interface SuscripcionCliente {

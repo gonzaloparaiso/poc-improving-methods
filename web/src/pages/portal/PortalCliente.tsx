@@ -6,7 +6,7 @@ import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import { fusionarCalendarios, toISO, type SemanaFusion, type BloqueConColor } from '../../lib/calendario'
 import BloqueDetalleModal from './BloqueDetalleModal'
 import { exportarPDF, exportarExcel, exportarAimharder, exportarWodbuster } from './exporters'
-import { apiPortalChangePassword } from '../../lib/storage'
+import { apiPortalChangePassword, apiPortalRenew } from '../../lib/storage'
 import PasswordInput from '../../components/PasswordInput'
 
 interface Props {
@@ -125,6 +125,9 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
   // Menú de exportar
   const [menuExport, setMenuExport] = useState(false)
+
+  // Renovación de suscripción
+  const [renovar, setRenovar] = useState<{ catalogoId: string; nombre: string; precio: number } | null>(null)
 
   const nombreCompleto = `${cliente.nombre}${cliente.apellido ? ' ' + cliente.apellido : ''}`
   const calsAExportar = calsActivos.length > 0 ? calsActivos : miscalendarios
@@ -257,6 +260,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                         </div>
                         <button
                           type="button"
+                          onClick={() => setRenovar({ catalogoId: cat!.id, nombre: cat!.nombre, precio: cat!.precioMensual })}
                           className="btn-primary w-full flex items-center justify-center gap-2 text-sm py-2.5"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -434,6 +438,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                       </a>
                       <button
                         type="button"
+                        onClick={() => setRenovar({ catalogoId: cat!.id, nombre: cat!.nombre, precio: cat!.precioMensual })}
                         className="btn-primary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -749,11 +754,80 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           onClose={() => setBloqueSel(null)}
         />
       )}
+
+      {renovar && (
+        <RenovarModal
+          catalogoId={renovar.catalogoId}
+          nombre={renovar.nombre}
+          precio={renovar.precio}
+          onClose={() => setRenovar(null)}
+        />
+      )}
     </div>
   )
 }
 
 // ─── Header ──────────────────────────────────────────────────────────────────
+
+function RenovarModal({ catalogoId, nombre, precio, onClose }: { catalogoId: string; nombre: string; precio: number; onClose: () => void }) {
+  const [estado, setEstado] = useState<'confirm' | 'loading' | 'paid'>('confirm')
+  const [error, setError] = useState('')
+
+  const confirmar = async () => {
+    setError(''); setEstado('loading')
+    try {
+      const r = await apiPortalRenew(catalogoId)
+      if (r.status === 'paid') { setEstado('paid'); return }
+      if (r.status === 'needs_action' && r.payment_url) { window.location.href = r.payment_url; return }
+      setError('No se pudo completar la renovación'); setEstado('confirm')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo renovar'); setEstado('confirm')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="card w-full sm:max-w-md sm:rounded-xl rounded-t-2xl rounded-b-none sm:rounded-b-xl">
+        <div className="flex items-center justify-between p-6 border-b border-tn-border">
+          <h3 className="text-white font-bold text-lg">Renovar suscripción</h3>
+          <button onClick={onClose} className="text-tn-muted hover:text-white p-1" disabled={estado === 'loading'}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        {estado === 'paid' ? (
+          <div className="p-8 text-center">
+            <div className="w-14 h-14 bg-green-500/10 rounded-2xl flex items-center justify-center mb-3 mx-auto">
+              <svg className="w-7 h-7 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-white font-bold">¡Renovación completada!</p>
+            <p className="text-tn-muted text-sm mt-1">Hemos cobrado tu cuota habitual. Gracias 💪</p>
+            <button onClick={onClose} className="btn-primary w-full mt-6">Cerrar</button>
+          </div>
+        ) : (
+          <div className="p-6 space-y-4">
+            <p className="text-tn-muted text-sm">
+              Vas a renovar <span className="text-white font-semibold">{nombre}</span>
+              {precio ? <> por <span className="text-white font-semibold">{precio} €</span></> : null}. Se cobrará a tu <span className="text-white">método de pago habitual</span>; no tienes que introducir nada.
+            </p>
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">{error}</div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button type="button" className="btn-secondary flex-1" onClick={onClose} disabled={estado === 'loading'}>Cancelar</button>
+              <button type="button" className="btn-primary flex-1" onClick={confirmar} disabled={estado === 'loading'}>
+                {estado === 'loading' ? 'Procesando…' : 'Confirmar y pagar'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function CambiarPasswordModal({ onClose }: { onClose: () => void }) {
   const [actual, setActual] = useState('')

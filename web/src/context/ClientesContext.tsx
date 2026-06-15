@@ -75,8 +75,8 @@ interface ClientesContextValue {
 
   // Catálogo de suscripciones
   catalogo: CatalogoSuscripcion[]
-  crearCatalogo: (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }) => Promise<CatalogoSuscripcion>
-  editarCatalogo: (id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }>) => void
+  crearCatalogo: (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null }) => Promise<CatalogoSuscripcion>
+  editarCatalogo: (id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null }>) => void
   borrarCatalogo: (id: string) => void
 
   // Suscripciones de clientes
@@ -170,13 +170,13 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
 
   // ── Catálogo ──
   // Crear producto pasa por la API REST (validación en el servidor)
-  const crearCatalogo = useCallback(async (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }) => {
+  const crearCatalogo = useCallback(async (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null }) => {
     const nueva = await apiCreateProduct(data) as CatalogoSuscripcion
     await refreshFromServer()
     return nueva
   }, [])
 
-  const editarCatalogo = useCallback((id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean }>) => {
+  const editarCatalogo = useCallback((id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null }>) => {
     updCatalogo(catalogo.map(c => c.id === id ? { ...c, ...data } : c))
   }, [catalogo, updCatalogo])
 

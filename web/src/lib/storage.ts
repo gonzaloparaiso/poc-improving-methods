@@ -88,6 +88,12 @@ export const apiForgotPassword = (email: string) =>
 export const apiResetPassword = (token: string, nueva: string) =>
   apiPost('/portal/reset-password', { token, nueva })
 
+/** Renueva una suscripción del cliente (crea y cobra el pedido en WooCommerce).
+ *  Devuelve { status: 'paid' } o { status: 'needs_action', payment_url }. */
+export const apiPortalRenew = (catalogoId: string) =>
+  apiPost('/portal/renew', { catalogoId }) as Promise<{ status: 'paid' | 'needs_action'; payment_url?: string }>
+
+
 /** Re-descarga los datos del servidor, reescribe la caché local y avisa a los
  *  contexts para que refresquen su estado (evento 'im-data-refreshed'). */
 export async function refreshFromServer(): Promise<void> {

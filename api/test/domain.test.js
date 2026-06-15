@@ -51,7 +51,7 @@ async function adminToken() {
 before(async () => {
   seed()
   proc = spawn(process.execPath, ['--experimental-sqlite', path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, DB_FILE: DB, PORT: String(PORT), DATA_FILE: path.join(os.tmpdir(), `none-dom-${process.pid}.json`) },
+    env: { ...process.env, DB_FILE: DB, PORT: String(PORT), DATA_FILE: path.join(os.tmpdir(), `none-dom-${process.pid}.json`), TN_RENEW_URL: 'http://127.0.0.1:1/renew', TN_RENEW_SECRET: 'test-secret' },
     stdio: 'ignore',
   })
   for (let i = 0; i < 60; i++) { try { const r = await fetch(BASE + '/health'); if (r.ok) return } catch {} await new Promise(r => setTimeout(r, 100)) }
@@ -150,4 +150,32 @@ test('ruta desconocida → 404', async () => {
   const token = await adminToken()
   const r = await api('GET', '/no-existe', { token })
   assert.equal(r.status, 404)
+})
+
+// ── Producto con ID de WooCommerce + renovación ──────────────────────────────
+test('crear producto guarda el wcProductId', async () => {
+  const token = await adminToken()
+  const prod = await api('POST', '/products', { token, body: { nombre: 'Plan WC', tipo: 'recurrente', programas: [{ programaId: 'prog1' }], wcProductId: 27984 } })
+  assert.equal(prod.status, 201)
+  assert.equal(prod.data.wcProductId, 27984)
+})
+
+test('renovar: staff → 403; producto sin wcProductId → 400; producto inexistente → 404', async () => {
+  const token = await adminToken()
+  // producto SIN wcProductId
+  const prod = await api('POST', '/products', { token, body: { nombre: 'Sin WC', tipo: 'recurrente', programas: [{ programaId: 'prog1' }] } })
+  const cli = await api('POST', '/clients', { token, body: { nombre: 'Ren', email: 'ren@test.com', username: 'ren', password: 'ren12345' } })
+  const portal = await api('POST', '/portal/login', { body: { identificador: 'ren@test.com', password: 'ren12345' } })
+
+  // staff no puede renovar (es endpoint de cliente)
+  const staff = await api('POST', '/portal/renew', { token, body: { catalogoId: prod.data.id } })
+  assert.equal(staff.status, 403)
+
+  // cliente + producto sin wcProductId → 400 (antes de llamar a la tienda)
+  const sinWc = await api('POST', '/portal/renew', { token: portal.data.token, body: { catalogoId: prod.data.id } })
+  assert.equal(sinWc.status, 400)
+
+  // catálogo inexistente → 404
+  const noCat = await api('POST', '/portal/renew', { token: portal.data.token, body: { catalogoId: 'no-existe' } })
+  assert.equal(noCat.status, 404)
 })

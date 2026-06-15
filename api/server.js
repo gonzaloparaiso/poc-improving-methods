@@ -28,6 +28,12 @@ const GMAIL = {
 }
 const APP_URL = process.env.APP_URL || ''      // base del enlace de reset (dominio); si vacío se deriva de la petición
 const PASSWORD_RESET_TTL = 60 * 60 * 1000      // 1 hora
+
+// ── Renovación de suscripción (endpoint propio en WordPress + WooCommerce) ────
+const RENEW = {
+  url: process.env.TN_RENEW_URL || '',       // p.ej. https://trainingnorte.com/wp-json/tn-portal/v1/renew
+  secret: process.env.TN_RENEW_SECRET || '', // secreto compartido con el snippet de WP
+}
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'data.db')
 const JSON_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json')
 const MAX_BODY = 30 * 1024 * 1024
@@ -259,7 +265,8 @@ const domain = {
       return { programaId: p.programaId, fechaInicio: tipo === 'recurrente' ? (p.fechaInicio || siguienteLunes()) : null }
     }) : []
     const cat = getCollection('im_suscripciones_catalogo')
-    const nuevo = { id: genId(), nombre: String(b.nombre).trim(), tipo, programas, precioMensual: Number(b.precioMensual) || 0, primerMesPrueba: b.primerMesPrueba === true, creadoEn: new Date().toISOString() }
+    const wcProductId = (b.wcProductId === '' || b.wcProductId == null) ? null : (Number(b.wcProductId) || null)
+    const nuevo = { id: genId(), nombre: String(b.nombre).trim(), tipo, programas, precioMensual: Number(b.precioMensual) || 0, primerMesPrueba: b.primerMesPrueba === true, wcProductId, creadoEn: new Date().toISOString() }
     setCollection('im_suscripciones_catalogo', [...cat, nuevo])
     return nuevo
   },
@@ -417,6 +424,30 @@ const server = http.createServer(async (req, res) => {
       arr[idx] = { ...arr[idx], password: hashPassword(nueva) }
       setCollection('im_clientes', arr)
       return json(res, 200, { ok: true })
+    }
+
+    // ── Portal cliente: renovar una suscripción (vía WooCommerce) ──
+    if (p === '/api/portal/renew' && method === 'POST') {
+      if (ses.tipo !== 'cliente') throw httpErr(403, 'Solo clientes')
+      if (!RENEW.url || !RENEW.secret) throw httpErr(503, 'Renovación no configurada')
+      const b = await readBody(req)
+      const cli = getCollection('im_clientes').find(c => c.id === ses.sujeto_id)
+      if (!cli) throw httpErr(404, 'Cliente no encontrado')
+      const cat = getCollection('im_suscripciones_catalogo').find(c => c.id === b.catalogoId)
+      if (!cat) throw httpErr(404, 'Producto no encontrado')
+      if (!cat.wcProductId) throw httpErr(400, 'Este producto no admite renovación online')
+      let wres, data
+      try {
+        wres = await fetch(RENEW.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-tn-secret': RENEW.secret },
+          body: JSON.stringify({ email: cli.email, product_id: cat.wcProductId }),
+          signal: AbortSignal.timeout(25000),
+        })
+        data = await wres.json().catch(() => ({}))
+      } catch (e) { throw httpErr(502, 'No se pudo contactar con la tienda') }
+      if (!wres.ok) throw httpErr(wres.status === 404 ? 404 : 502, data.error || 'No se pudo renovar')
+      return json(res, 200, data) // { status: 'paid' } | { status: 'needs_action', payment_url }
     }
 
     // ── Resto: solo staff ──

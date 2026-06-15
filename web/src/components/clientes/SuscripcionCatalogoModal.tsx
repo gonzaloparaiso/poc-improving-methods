@@ -34,6 +34,7 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
   const [progs, setProgs]     = useState<ProgLocal[]>([])
   const [precio, setPrecio]   = useState('')
   const [primerMesPrueba, setPrimerMesPrueba] = useState(false)
+  const [wcId, setWcId]       = useState('')
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
 
@@ -44,9 +45,10 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
       setProgs(item.programas.map(p => ({ ...p, _key: genId() })))
       setPrecio(item.precioMensual ? String(item.precioMensual) : '')
       setPrimerMesPrueba(item.primerMesPrueba ?? false)
+      setWcId(item.wcProductId != null ? String(item.wcProductId) : '')
     } else {
       setNombre(''); setTipo('recurrente'); setProgs([])
-      setPrecio(''); setPrimerMesPrueba(false)
+      setPrecio(''); setPrimerMesPrueba(false); setWcId('')
     }
     setError('')
   }, [item])
@@ -88,7 +90,8 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
     const precioNum = parseFloat(precio.replace(',', '.')) || 0
     if (precioNum < 0) return setError('El precio no puede ser negativo')
 
-    const data = { nombre: nombre.trim(), programas: progFinal, tipo, precioMensual: precioNum, primerMesPrueba }
+    const wcProductId = wcId.trim() ? (parseInt(wcId.trim(), 10) || null) : null
+    const data = { nombre: nombre.trim(), programas: progFinal, tipo, precioMensual: precioNum, primerMesPrueba, wcProductId }
     setSaving(true)
     try {
       if (isEdit && item) {
@@ -160,6 +163,20 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-tn-muted">€</span>
             </div>
+          </div>
+
+          {/* ID de producto WooCommerce (para renovar) */}
+          <div>
+            <label className="label">ID de producto en WooCommerce</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="input-field"
+              placeholder="Ej: 27984 (opcional)"
+              value={wcId}
+              onChange={e => setWcId(e.target.value.replace(/[^0-9]/g, ''))}
+            />
+            <p className="text-tn-muted text-xs mt-1">Necesario para que el botón "Renovar" del portal cree el pedido en la tienda.</p>
           </div>
 
           {/* Primer mes de prueba */}
