@@ -4,7 +4,7 @@ import { saveKV, apiCreateProduct, refreshFromServer } from '../lib/storage'
 import * as kv from '../lib/kv'
 
 /** Migra un catalogo item antiguo al nuevo formato (programas[] + precio/prueba) */
-function migrarCatalogo(raw: Record<string, unknown>): CatalogoSuscripcion {
+export function migrarCatalogo(raw: Record<string, unknown>): CatalogoSuscripcion {
   // Defaults para campos nuevos
   const precioMensual = typeof raw.precioMensual === 'number' ? raw.precioMensual : 0
   const primerMesPrueba = raw.primerMesPrueba === true

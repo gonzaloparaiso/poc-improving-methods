@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useRef, type FormEvent } from 'react'
-import { type Cliente, type Bloque, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente } from '../../types'
+import { type Cliente, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente } from '../../types'
 import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosContext'
 import { useEjercicios } from '../../context/EjerciciosContext'
 import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
+import { fusionarCalendarios, toISO, type SemanaFusion, type BloqueConColor } from '../../lib/calendario'
 import BloqueDetalleModal from './BloqueDetalleModal'
 import { exportarPDF, exportarExcel, exportarAimharder, exportarWodbuster } from './exporters'
 import { apiPortalChangePassword } from '../../lib/storage'
@@ -13,67 +14,10 @@ interface Props {
   onLogout: () => void
 }
 
-interface BloqueConColor extends Bloque {
-  calId: string
-  calNombre: string
-  colorKey: string
-}
-
-interface DiaFusion {
-  fecha: string
-  diaSemana: number
-  bloques: BloqueConColor[]
-}
-
-interface SemanaFusion {
-  fechaLunes: string
-  dias: DiaFusion[]
-}
-
-function toISO(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-function lunesDe(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  const date = new Date(y, m - 1, d)
-  const dow = date.getDay()
-  const diff = dow === 0 ? -6 : 1 - dow
-  date.setDate(date.getDate() + diff)
-  return toISO(date)
-}
-
 function fmtFechaLarga(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('es-ES', {
     weekday: 'long', day: '2-digit', month: 'long',
   })
-}
-
-function fusionarCalendarios(cals: CalendarioCliente[]): SemanaFusion[] {
-  const semanaMap = new Map<string, DiaFusion[]>()
-
-  cals.forEach(cal => {
-    const colorKey = cal.colorKey ?? 'yellow'
-    cal.semanas.forEach(semana => {
-      const lunes = semana.fechaLunes ?? lunesDe(semana.dias[0]?.fecha ?? '')
-      if (!semanaMap.has(lunes)) {
-        const dias: DiaFusion[] = DIAS_SEMANA.map((_, i) => ({
-          fecha: addDays(lunes, i), diaSemana: i, bloques: [],
-        }))
-        semanaMap.set(lunes, dias)
-      }
-      const dias = semanaMap.get(lunes)!
-      semana.dias.forEach((dia, diaIdx) => {
-        dia.bloques.forEach(bloque => {
-          dias[diaIdx]?.bloques.push({ ...bloque, calId: cal.id, calNombre: cal.programaNombre, colorKey })
-        })
-      })
-    })
-  })
-
-  return Array.from(semanaMap.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([fechaLunes, dias]) => ({ fechaLunes, dias }))
 }
 
 type Vista = 'semana' | 'todas' | 'dia'

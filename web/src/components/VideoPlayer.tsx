@@ -8,7 +8,7 @@ interface Props {
   className?: string
 }
 
-function youtubeOrVimeoEmbed(url: string): string | null {
+export function youtubeOrVimeoEmbed(url: string): string | null {
   const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([^&?\s]+)/)
   if (yt) return `https://www.youtube.com/embed/${yt[1]}`
   const vm = url.match(/vimeo\.com\/(\d+)/)

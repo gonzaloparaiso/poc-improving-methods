@@ -34,7 +34,7 @@ export function fmtFecha(iso: string): string {
 }
 
 // ── Crear semanas con fechas reales desde el programa ─────────────────────────
-function instanciarPrograma(programa: Programa, fechaInicio: string): SemanaCalendario[] {
+export function instanciarPrograma(programa: Programa, fechaInicio: string): SemanaCalendario[] {
   return programa.semanas.map((semana, si) => {
     const fechaLunes = addDays(fechaInicio, si * 7)
     const dias: DiaCalendario[] = semana.dias.map((dia, di) => ({
