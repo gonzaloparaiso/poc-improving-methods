@@ -103,8 +103,10 @@ jobs:
       - name: Verificar salud
         if: env.HAS_DEPLOY == 'true'
         run: |
+          # Comprobamos el proceso Node directamente en :3001 (nginx, tras certbot,
+          # devuelve 404 a hosts distintos del dominio, p.ej. "localhost").
           for i in $(seq 1 10); do
-            code=$(ssh -i ~/.ssh/id_deploy root@${{ secrets.DEPLOY_HOST }} 'curl -s -o /dev/null -w "%{http_code}" localhost/api/health')
+            code=$(ssh -i ~/.ssh/id_deploy root@${{ secrets.DEPLOY_HOST }} 'curl -s -o /dev/null -w "%{http_code}" localhost:3001/api/health')
             if [ "$code" = "200" ]; then echo "API OK (200)"; exit 0; fi
             echo "esperando API… ($code)"; sleep 2
           done
