@@ -1,0 +1,111 @@
+name: CI/CD
+
+# Pruebas en cada push/PR a main. Si pasan TODAS y es un push a main → deploy.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Evita deploys solapados
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Pruebas (API + unit + build + E2E)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependencias del frontend
+        working-directory: web
+        run: npm ci
+
+      - name: Instalar navegador de Playwright
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Pruebas de API (node:test)
+        working-directory: api
+        run: npm test
+
+      - name: Pruebas unitarias (Vitest)
+        working-directory: web
+        run: npm run test:unit
+
+      - name: Typecheck + build
+        working-directory: web
+        run: npm run build
+
+      - name: Pruebas E2E (Playwright)
+        working-directory: web
+        run: npm run test:e2e
+
+      - name: Subir build del frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 3
+
+  deploy:
+    name: Desplegar a producción
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      HAS_DEPLOY: ${{ secrets.DEPLOY_SSH_KEY != '' && secrets.DEPLOY_HOST != '' }}
+    steps:
+      - name: Comprobar secretos de deploy
+        run: |
+          if [ "$HAS_DEPLOY" != "true" ]; then
+            echo "::warning::Faltan los secretos DEPLOY_SSH_KEY / DEPLOY_HOST — se omite el deploy. Añádelos en Settings → Secrets and variables → Actions."
+          fi
+
+      - uses: actions/checkout@v4
+        if: env.HAS_DEPLOY == 'true'
+
+      - name: Recuperar build del frontend
+        if: env.HAS_DEPLOY == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Configurar clave SSH
+        if: env.HAS_DEPLOY == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Desplegar frontend
+        if: env.HAS_DEPLOY == 'true'
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/id_deploy" \
+            web/dist/ root@${{ secrets.DEPLOY_HOST }}:/var/www/improving-methods/
+
+      - name: Desplegar API y reiniciar
+        if: env.HAS_DEPLOY == 'true'
+        run: |
+          scp -i ~/.ssh/id_deploy api/server.js root@${{ secrets.DEPLOY_HOST }}:/opt/improving-api/server.js
+          # restart SIN --update-env para conservar las variables (GMAIL_*, APP_URL)
+          ssh -i ~/.ssh/id_deploy root@${{ secrets.DEPLOY_HOST }} 'pm2 restart im-api'
+
+      - name: Verificar salud
+        if: env.HAS_DEPLOY == 'true'
+        run: |
+          for i in $(seq 1 10); do
+            code=$(ssh -i ~/.ssh/id_deploy root@${{ secrets.DEPLOY_HOST }} 'curl -s -o /dev/null -w "%{http_code}" localhost/api/health')
+            if [ "$code" = "200" ]; then echo "API OK (200)"; exit 0; fi
+            echo "esperando API… ($code)"; sleep 2
+          done
+          echo "La API no respondió 200 tras el deploy"; exit 1
