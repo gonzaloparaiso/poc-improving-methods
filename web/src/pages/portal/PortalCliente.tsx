@@ -93,10 +93,22 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
   const calsActivos = miscalendarios.filter(c => seleccionados.has(c.id))
   const semanas = useMemo(() => fusionarCalendarios(calsActivos), [calsActivos])
 
+  // Las vistas Semana/Todas solo en escritorio (en móvil no caben bien)
+  const [esEscritorio, setEsEscritorio] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const h = () => setEsEscritorio(mq.matches)
+    mq.addEventListener('change', h)
+    return () => mq.removeEventListener('change', h)
+  }, [])
+
   // En móvil abrimos en vista 'día' (más cómoda); en escritorio, semana completa
   const [vista, setVista]         = useState<Vista>(() =>
     typeof window !== 'undefined' && window.innerWidth < 1024 ? 'dia' : 'semana')
   const [semanaIdx, setSemanaIdx] = useState(0)
+  // En móvil se fuerza siempre la vista por día
+  const vistaEfectiva: Vista = esEscritorio ? vista : 'dia'
 
   // Indice del día actual relativo al inicio
   const hoyISO = toISO(new Date())
@@ -539,12 +551,14 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           )
         })()}
 
-        {/* Selector vista */}
+        {/* Selector vista (Semana/Todas solo en escritorio) */}
         <div className="flex gap-1 bg-tn-dark border border-tn-border rounded-xl p-1 w-fit">
           {([
             { id: 'dia' as Vista,    label: 'Día'    },
-            { id: 'semana' as Vista, label: 'Semana' },
-            { id: 'todas' as Vista,  label: 'Todas'  },
+            ...(esEscritorio ? [
+              { id: 'semana' as Vista, label: 'Semana' },
+              { id: 'todas' as Vista,  label: 'Todas'  },
+            ] : []),
           ]).map(t => (
             <button
               key={t.id}
@@ -568,8 +582,18 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           ))}
         </div>
 
+        {/* Aviso solo en móvil: la vista semanal es de escritorio */}
+        {!esEscritorio && (
+          <p className="text-tn-muted text-xs flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            La vista semanal y de programa completo está disponible desde un ordenador.
+          </p>
+        )}
+
         {/* Vista DÍA */}
-        {vista === 'dia' && semanaActual && (
+        {vistaEfectiva === 'dia' && semanaActual && (
           <div className="space-y-4">
             {/* Navegación día */}
             <div className="flex items-center justify-between gap-3">
@@ -642,7 +666,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
         )}
 
         {/* Vista SEMANA */}
-        {vista === 'semana' && (
+        {vistaEfectiva === 'semana' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 overflow-x-auto pb-1 flex-wrap">
               {semanas.map((s, i) => (
@@ -663,7 +687,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
         )}
 
         {/* Vista TODAS */}
-        {vista === 'todas' && (
+        {vistaEfectiva === 'todas' && (
           <div className="space-y-8">
             {semanas.map((s, i) => (
               <div key={s.fechaLunes} className="space-y-3">
