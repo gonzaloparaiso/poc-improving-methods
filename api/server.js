@@ -34,6 +34,8 @@ const RENEW = {
   url: process.env.TN_RENEW_URL || '',       // p.ej. https://trainingnorte.com/wp-json/tn-portal/v1/renew
   secret: process.env.TN_RENEW_SECRET || '', // secreto compartido con el snippet de WP
 }
+// Webhook entrante de WooCommerce (sincroniza acceso del portal al pagar)
+const WC_WEBHOOK = { secret: process.env.TN_WC_WEBHOOK_SECRET || '' }
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'data.db')
 const JSON_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json')
 const MAX_BODY = 30 * 1024 * 1024
@@ -305,6 +307,58 @@ const domain = {
   listPrograms: () => getCollection('im_programas').map(p => ({ id: p.id, nombre: p.nombre, semanas: p.semanas.length })),
 }
 
+// ── Sincronización entrante desde WooCommerce (webhook de suscripción) ────────
+// Mapea la suscripción de WC al portal: por email (cliente) + wcProductId
+// (producto), actualiza fechaFin/activa y genera calendarios si faltan.
+function syncDesdeWC(sub) {
+  const email = String((sub.billing && sub.billing.email) || '').trim().toLowerCase()
+  if (!email) return { ignored: 'sin_email' }
+  const cliente = getCollection('im_clientes').find(c => String(c.email || '').toLowerCase() === email)
+  if (!cliente) return { ignored: 'cliente_no_en_portal', email }
+
+  const status = String(sub.status || '')
+  const activa = status === 'active' || status === 'pending-cancel'
+  const endRaw = sub.next_payment_date_gmt || sub.end_date_gmt || ''
+  const fechaFin = endRaw ? String(endRaw).split('T')[0].split(' ')[0] : null
+  const productIds = (sub.line_items || []).map(li => li.product_id).filter(Boolean)
+
+  const catalogo = getCollection('im_suscripciones_catalogo')
+  let subs = getCollection('im_suscripciones_clientes')
+  let cals = getCollection('im_calendarios')
+  const programas = getCollection('im_programas')
+  const matched = []
+  let subsChanged = false, calsChanged = false
+
+  for (const pid of productIds) {
+    const cat = catalogo.find(c => c.wcProductId === pid)
+    if (!cat) continue
+    matched.push(cat.nombre)
+    let s = subs.find(x => x.clienteId === cliente.id && x.catalogoId === cat.id)
+    if (s) {
+      s.activa = activa
+      if (fechaFin) s.fechaFin = fechaFin
+      s.wcSubscriptionId = sub.id
+    } else {
+      const f = new Date(); f.setMonth(f.getMonth() + 1); f.setDate(f.getDate() + 3)
+      const finDef = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`
+      s = { id: genId(), catalogoId: cat.id, clienteId: cliente.id, fechaInicio: new Date().toISOString(), fechaFin: fechaFin || finDef, activa, wcSubscriptionId: sub.id }
+      subs = [...subs, s]
+    }
+    subsChanged = true
+    // Generar calendarios si el cliente aún no los tiene para los programas del producto
+    if (activa && (cat.programas || []).length) {
+      const yaTiene = cals.some(c => c.clienteId === cliente.id && cat.programas.some(pa => pa.programaId === c.programaId))
+      if (!yaTiene) {
+        const nuevos = generarCalendarios(cliente, cat, s.id, programas, cals)
+        if (nuevos.length) { cals = [...cals, ...nuevos]; calsChanged = true }
+      }
+    }
+  }
+  if (subsChanged) setCollection('im_suscripciones_clientes', subs)
+  if (calsChanged) setCollection('im_calendarios', cals)
+  return { cliente: cliente.id, productos: matched, activa, fechaFin, calendarios: calsChanged }
+}
+
 // ── HTTP ──────────────────────────────────────────────────────────────────────
 function json(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)) }
 function readBody(req) {
@@ -312,6 +366,14 @@ function readBody(req) {
     let body = '', size = 0
     req.on('data', ch => { size += ch.length; if (size > MAX_BODY) { reject(new Error('too_large')); req.destroy() } else body += ch })
     req.on('end', () => { try { resolve(body ? JSON.parse(body) : {}) } catch { reject(new Error('bad_json')) } })
+  })
+}
+// Body crudo (string) — necesario para verificar la firma HMAC de WooCommerce
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '', size = 0
+    req.on('data', ch => { size += ch.length; if (size > MAX_BODY) { reject(new Error('too_large')); req.destroy() } else body += ch })
+    req.on('end', () => resolve(body))
   })
 }
 
@@ -325,6 +387,23 @@ const server = http.createServer(async (req, res) => {
   try {
     // ── Públicos ──
     if (p === '/api/health') return json(res, 200, { ok: true, db: 'sqlite', auth: true })
+
+    // ── Webhook de WooCommerce (sincroniza acceso del portal) ──
+    if (p === '/api/wc/webhook' && method === 'POST') {
+      const raw = await readRawBody(req)
+      if (!WC_WEBHOOK.secret) return json(res, 503, { error: 'webhook no configurado' })
+      const sig = req.headers['x-wc-webhook-signature'] || ''
+      const expected = crypto.createHmac('sha256', WC_WEBHOOK.secret).update(raw, 'utf8').digest('base64')
+      const a = Buffer.from(String(sig)); const b2 = Buffer.from(expected)
+      if (a.length !== b2.length || !crypto.timingSafeEqual(a, b2)) return json(res, 401, { error: 'firma inválida' })
+      let payload; try { payload = JSON.parse(raw) } catch { return json(res, 200, { ok: true, ignored: 'sin_payload' }) }
+      const topic = String(req.headers['x-wc-webhook-topic'] || '')
+      if (topic.startsWith('subscription')) {
+        try { return json(res, 200, { ok: true, ...syncDesdeWC(payload) }) }
+        catch (e) { console.error('[wc-webhook]', e.message); return json(res, 200, { ok: false, error: 'proc' }) }
+      }
+      return json(res, 200, { ok: true, ignored: topic || 'sin_topic' })
+    }
 
     if (p === '/api/login' && method === 'POST') {
       const b = await readBody(req)

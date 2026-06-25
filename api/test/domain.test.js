@@ -51,7 +51,7 @@ async function adminToken() {
 before(async () => {
   seed()
   proc = spawn(process.execPath, ['--experimental-sqlite', path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, DB_FILE: DB, PORT: String(PORT), DATA_FILE: path.join(os.tmpdir(), `none-dom-${process.pid}.json`), TN_RENEW_URL: 'http://127.0.0.1:1/renew', TN_RENEW_SECRET: 'test-secret' },
+    env: { ...process.env, DB_FILE: DB, PORT: String(PORT), DATA_FILE: path.join(os.tmpdir(), `none-dom-${process.pid}.json`), TN_RENEW_URL: 'http://127.0.0.1:1/renew', TN_RENEW_SECRET: 'test-secret', TN_WC_WEBHOOK_SECRET: 'wh-secret' },
     stdio: 'ignore',
   })
   for (let i = 0; i < 60; i++) { try { const r = await fetch(BASE + '/health'); if (r.ok) return } catch {} await new Promise(r => setTimeout(r, 100)) }
@@ -158,6 +158,63 @@ test('crear producto guarda el wcProductId', async () => {
   const prod = await api('POST', '/products', { token, body: { nombre: 'Plan WC', tipo: 'recurrente', programas: [{ programaId: 'prog1' }], wcProductId: 27984 } })
   assert.equal(prod.status, 201)
   assert.equal(prod.data.wcProductId, 27984)
+})
+
+// ── Webhook de WooCommerce ───────────────────────────────────────────────────
+async function postWebhook(rawObj, { topic = 'subscription.updated', secret = 'wh-secret', badSig = false } = {}) {
+  const raw = JSON.stringify(rawObj)
+  const sig = badSig ? 'firma-mala' : crypto.createHmac('sha256', secret).update(raw, 'utf8').digest('base64')
+  const res = await fetch(BASE + '/wc/webhook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-wc-webhook-topic': topic, 'x-wc-webhook-signature': sig },
+    body: raw,
+  })
+  let data = null; try { data = await res.json() } catch {}
+  return { status: res.status, data }
+}
+
+test('webhook WC: firma inválida → 401', async () => {
+  const r = await postWebhook({ id: 1, status: 'active' }, { badSig: true })
+  assert.equal(r.status, 401)
+})
+
+test('webhook WC: email desconocido → 200 ignorado', async () => {
+  const r = await postWebhook({ id: 2, status: 'active', billing: { email: 'nadie@x.com' }, line_items: [{ product_id: 1 }] })
+  assert.equal(r.status, 200)
+  assert.equal(r.data.ignored, 'cliente_no_en_portal')
+})
+
+test('webhook WC: suscripción activa actualiza fechaFin/activa del cliente', async () => {
+  const token = await adminToken()
+  const prod = await api('POST', '/products', { token, body: { nombre: 'Plan Sync', tipo: 'recurrente', programas: [{ programaId: 'prog1' }], wcProductId: 55555 } })
+  await api('POST', '/clients', { token, body: { nombre: 'Web', email: 'webhook@test.com', username: 'webh', password: 'web12345' } })
+  const r = await postWebhook({
+    id: 9001, status: 'active', billing: { email: 'webhook@test.com' },
+    line_items: [{ product_id: 55555 }], next_payment_date_gmt: '2030-01-15 00:00:00',
+  })
+  assert.equal(r.status, 200)
+  assert.ok(r.data.productos.includes('Plan Sync'))
+  // la suscripción del portal queda activa hasta esa fecha
+  const subs = await api('GET', '/data/im_suscripciones_clientes', { token })
+  const s = subs.data.find(x => x.catalogoId === prod.data.id)
+  assert.ok(s, 'creó la suscripción del portal')
+  assert.equal(s.activa, true)
+  assert.equal(s.fechaFin, '2030-01-15')
+  assert.equal(s.wcSubscriptionId, 9001)
+})
+
+test('webhook WC: suscripción cancelada desactiva el acceso', async () => {
+  const token = await adminToken()
+  await api('POST', '/products', { token, body: { nombre: 'Plan Cancel', tipo: 'recurrente', programas: [{ programaId: 'prog1' }], wcProductId: 55556 } })
+  await api('POST', '/clients', { token, body: { nombre: 'WebC', email: 'webhookc@test.com', username: 'webhc', password: 'web12345' } })
+  // primero activa
+  await postWebhook({ id: 9002, status: 'active', billing: { email: 'webhookc@test.com' }, line_items: [{ product_id: 55556 }], next_payment_date_gmt: '2030-01-01 00:00:00' })
+  // luego cancelada
+  const r = await postWebhook({ id: 9002, status: 'cancelled', billing: { email: 'webhookc@test.com' }, line_items: [{ product_id: 55556 }] })
+  assert.equal(r.status, 200)
+  const subs = await api('GET', '/data/im_suscripciones_clientes', { token })
+  const s = subs.data.find(x => x.wcSubscriptionId === 9002)
+  assert.equal(s.activa, false)
 })
 
 test('renovar: staff → 403; producto sin wcProductId → 400; producto inexistente → 404', async () => {
