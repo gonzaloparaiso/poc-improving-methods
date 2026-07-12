@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useClientes } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
 import { useCalendarios, addDays } from '../../context/CalendariosContext'
-import { type CatalogoSuscripcion, type ProgramaAsociado } from '../../types'
+import { type CatalogoSuscripcion, type ProgramaAsociado, BASIC_PROGRAM_ID, BASIC_PROGRAM_NOMBRE } from '../../types'
 import SuscripcionCatalogoModal from '../../components/clientes/SuscripcionCatalogoModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { usePermisos } from '../../hooks/usePermisos'
@@ -110,7 +110,11 @@ export default function SuscripcionesCatalogo() {
               <tbody className="divide-y divide-tn-border">
                 {catalogo.map(s => {
                   const clientesConEsta = suscripciones.filter(sc => sc.catalogoId === s.id && sc.activa).length
-                  const progsAsoc = s.programas.map(pa => programas.find(p => p.id === pa.programaId)).filter(Boolean)
+                  const progsAsoc = s.programas.map(pa =>
+                    pa.programaId === BASIC_PROGRAM_ID
+                      ? { id: BASIC_PROGRAM_ID, nombre: BASIC_PROGRAM_NOMBRE }
+                      : programas.find(p => p.id === pa.programaId),
+                  ).filter(Boolean)
                   return (
                     <tr key={s.id} className="hover:bg-tn-dark/40 transition-colors">
                       <td className="px-5 py-4">

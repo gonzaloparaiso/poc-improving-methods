@@ -151,7 +151,7 @@ export async function bootSync(): Promise<void> {
       const me = await res.json() as Record<string, unknown>
       // Escribir solo las colecciones que el portal necesita (datos del propio cliente)
       kv.set('im_clientes', JSON.stringify([me.cliente]))
-      for (const key of ['im_suscripciones_clientes', 'im_suscripciones_catalogo', 'im_calendarios', 'im_ejercicios']) {
+      for (const key of ['im_suscripciones_clientes', 'im_suscripciones_catalogo', 'im_calendarios', 'im_ejercicios', 'im_respiraciones', 'im_movilidad']) {
         kv.set(key, JSON.stringify(me[key] ?? []))
       }
     }

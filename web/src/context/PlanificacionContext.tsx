@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-import { type Programa, type Bloque, type Semana, type DiaPrograma, type Adjunto } from '../types'
+import { type Programa, type Bloque, type Semana, type DiaPrograma, type Adjunto, esNombreReservado, BASIC_PROGRAM_NOMBRE } from '../types'
 import { saveKV } from '../lib/storage'
 import * as kv from '../lib/kv'
 
@@ -82,12 +82,18 @@ export function PlanificacionProvider({ children }: { children: ReactNode }) {
 
   // ── Programas ──
   const crearPrograma = useCallback((nombre: string, descripcion: string): Programa => {
+    if (esNombreReservado(nombre)) {
+      throw new Error(`"${BASIC_PROGRAM_NOMBRE}" es un nombre reservado y no se puede usar en un programa`)
+    }
     const p: Programa = { id: genId(), nombre, descripcion, semanas: semanas4(), creadoEn: new Date().toISOString() }
     updateProgramas([...programas, p])
     return p
   }, [programas, updateProgramas])
 
   const editarPrograma = useCallback((id: string, data: Partial<Pick<Programa, 'nombre' | 'descripcion'>>) => {
+    if (data.nombre != null && esNombreReservado(data.nombre)) {
+      throw new Error(`"${BASIC_PROGRAM_NOMBRE}" es un nombre reservado y no se puede usar en un programa`)
+    }
     mutarPrograma(id, p => ({ ...p, ...data }))
   }, [mutarPrograma])
 
@@ -97,6 +103,9 @@ export function PlanificacionProvider({ children }: { children: ReactNode }) {
 
   /** Clona un programa con nuevo nombre. Regenera ids de semanas/bloques/ejercicios */
   const clonarPrograma = useCallback((id: string, nuevoNombre: string): Programa | null => {
+    if (esNombreReservado(nuevoNombre)) {
+      throw new Error(`"${BASIC_PROGRAM_NOMBRE}" es un nombre reservado y no se puede usar en un programa`)
+    }
     const original = programas.find(p => p.id === id)
     if (!original) return null
     const clon: Programa = {

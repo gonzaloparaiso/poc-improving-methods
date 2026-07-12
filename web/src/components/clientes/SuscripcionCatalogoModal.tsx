@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react'
-import { type CatalogoSuscripcion, type TipoSuscripcion, type ProgramaAsociado } from '../../types'
+import { type CatalogoSuscripcion, type TipoSuscripcion, type ProgramaAsociado, BASIC_PROGRAM_ID, BASIC_PROGRAM_NOMBRE } from '../../types'
 import { useClientes } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
 import LunesPicker, { getLunes } from '../LunesPicker'
@@ -59,16 +59,26 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
   const removeProg = (key: string) => setProgs(p => p.filter(x => x._key !== key))
 
   const updateProg = (key: string, field: 'programaId' | 'fechaInicio', val: string | null) =>
-    setProgs(p => p.map(x => x._key === key ? { ...x, [field]: val } : x))
+    setProgs(p => p.map(x => {
+      if (x._key !== key) return x
+      // "Basic" no se programa por semanas: nunca lleva fecha de inicio
+      if (field === 'programaId' && val === BASIC_PROGRAM_ID) return { ...x, programaId: val, fechaInicio: null }
+      return { ...x, [field]: val }
+    }))
 
   // Al cambiar tipo a recurrente, inicializar fechas vacías; a único, borrarlas
+  // ("Basic" nunca lleva fecha, sea cual sea el tipo)
   useEffect(() => {
     setProgs(p => p.map(x => ({
       ...x,
-      fechaInicio: tipo === 'recurrente' ? (x.fechaInicio ?? nextLunes()) : null,
+      fechaInicio: x.programaId === BASIC_PROGRAM_ID ? null : tipo === 'recurrente' ? (x.fechaInicio ?? nextLunes()) : null,
     })))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo])
+
+  // "Basic" es un pseudo-programa siempre disponible (da acceso a Contenido);
+  // se ofrece en el selector junto a los programas reales
+  const opcionesProgramas = [{ id: BASIC_PROGRAM_ID, nombre: `${BASIC_PROGRAM_NOMBRE} — Respiración y Movilidad` }, ...programas]
 
   // Programas ya seleccionados (para no repetir en el dropdown)
   const progIdsUsados = progs.map(p => p.programaId).filter(Boolean)
@@ -77,14 +87,15 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
     e.preventDefault()
     if (!nombre.trim()) return setError('El nombre es obligatorio')
     const programasValidos = progs.filter(p => p.programaId)
-    if (programasValidos.length > 0 && tipo === 'recurrente') {
-      const sinFecha = programasValidos.find(p => !p.fechaInicio)
+    if (tipo === 'recurrente') {
+      // "Basic" no necesita fecha (no se programa por semanas)
+      const sinFecha = programasValidos.find(p => p.programaId !== BASIC_PROGRAM_ID && !p.fechaInicio)
       if (sinFecha) return setError('Todos los programas recurrentes necesitan una fecha de inicio')
     }
 
     const progFinal: ProgramaAsociado[] = programasValidos.map(p => ({
       programaId: p.programaId,
-      fechaInicio: tipo === 'recurrente' && p.fechaInicio ? getLunes(p.fechaInicio) : null,
+      fechaInicio: p.programaId !== BASIC_PROGRAM_ID && tipo === 'recurrente' && p.fechaInicio ? getLunes(p.fechaInicio) : null,
     }))
 
     const precioNum = parseFloat(precio.replace(',', '.')) || 0
@@ -202,7 +213,7 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
                   <span className="text-tn-muted font-normal ml-2">({progs.filter(p => p.programaId).length})</span>
                 )}
               </p>
-              {programas.length > 0 && progIdsUsados.length < programas.length && (
+              {progIdsUsados.length < opcionesProgramas.length && (
                 <button type="button" onClick={addProg}
                   className="flex items-center gap-1 text-tn-yellow text-sm font-semibold hover:text-tn-yellow-dark transition-colors">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -215,11 +226,11 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
 
             {programas.length === 0 && (
               <p className="text-tn-muted text-xs">
-                Crea programas en la sección Planificación para poder asociarlos.
+                "{BASIC_PROGRAM_NOMBRE}" siempre está disponible. Crea programas en la sección Planificación para asociar entrenamientos además de contenido.
               </p>
             )}
 
-            {progs.length === 0 && programas.length > 0 && (
+            {progs.length === 0 && (
               <button type="button" onClick={addProg}
                 className="w-full border border-dashed border-tn-border rounded-xl py-4 text-tn-muted/60 hover:text-tn-yellow hover:border-tn-yellow/40 text-sm transition-all">
                 + Añadir programa
@@ -240,7 +251,7 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
                       required
                     >
                       <option value="">Selecciona un programa</option>
-                      {programas
+                      {opcionesProgramas
                         .filter(p => p.id === prog.programaId || !progIdsUsados.includes(p.id))
                         .map(p => (
                           <option key={p.id} value={p.id}>{p.nombre}</option>
@@ -254,21 +265,26 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
                     </button>
                   </div>
 
-                  {tipo === 'recurrente' && prog.programaId && (
+                  {tipo === 'recurrente' && prog.programaId && prog.programaId !== BASIC_PROGRAM_ID && (
                     <LunesPicker
                       value={prog.fechaInicio ?? ''}
                       onChange={v => updateProg(prog._key, 'fechaInicio', v)}
                       label="Lunes de inicio *"
                     />
                   )}
+                  {prog.programaId === BASIC_PROGRAM_ID && (
+                    <p className="text-tn-muted text-xs">
+                      Da acceso inmediato a Respiración y Movilidad, sin fecha de inicio.
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
 
-            {tipo === 'unico' && progs.filter(p => p.programaId).length > 0 && (
+            {tipo === 'unico' && progs.filter(p => p.programaId && p.programaId !== BASIC_PROGRAM_ID).length > 0 && (
               <div className="mt-3 bg-tn-yellow/5 border border-tn-yellow/20 rounded-xl p-3">
                 <p className="text-tn-yellow/80 text-xs">
-                  Los {progs.filter(p => p.programaId).length} programas se asignarán desde el siguiente lunes al realizar la asignación.
+                  Los {progs.filter(p => p.programaId && p.programaId !== BASIC_PROGRAM_ID).length} programas se asignarán desde el siguiente lunes al realizar la asignación.
                 </p>
               </div>
             )}

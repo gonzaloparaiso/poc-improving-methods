@@ -122,6 +122,22 @@ export interface ProgramaAsociado {
   fechaInicio: string | null
 }
 
+// ─── "Basic": pseudo-programa reservado ───────────────────────────────────────
+// No es un Programa real (no tiene semanas/bloques): es un id centinela que se
+// guarda como un ProgramaAsociado más dentro de CatalogoSuscripcion.programas.
+// Da acceso a la sección Contenido (Respiración/Movilidad) en el portal, en
+// vez de generar un calendario de entrenamiento. El nombre "Basic" queda
+// reservado — no se puede usar para crear/renombrar un Programa real (ver
+// esNombreReservado, usado en PlanificacionContext).
+// OJO: este mismo id está duplicado literalmente en api/server.js
+// (BASIC_PROGRAM_ID) — si se cambia aquí, hay que cambiarlo también allí.
+export const BASIC_PROGRAM_ID = '__basic__'
+export const BASIC_PROGRAM_NOMBRE = 'Basic'
+
+export function esNombreReservado(nombre: string): boolean {
+  return nombre.trim().toLowerCase() === BASIC_PROGRAM_NOMBRE.toLowerCase()
+}
+
 export interface CatalogoSuscripcion {
   id: string
   nombre: string

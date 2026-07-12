@@ -49,6 +49,9 @@ const ARRAY_KEYS = [
 const OBJECT_KEY = 'im_tareas_completadas'
 const ALLOWED_KEYS = new Set([...ARRAY_KEYS, OBJECT_KEY])
 const KEYS_CON_PASSWORD = new Set(['im_users', 'im_clientes'])
+// Pseudo-programa reservado "Basic" (da acceso a Contenido, no genera calendario).
+// Debe coincidir literalmente con BASIC_PROGRAM_ID en web/src/types/index.ts.
+const BASIC_PROGRAM_ID = '__basic__'
 
 const ROLES = ['administrador', 'head_coach', 'coach']
 const TIPOS = ['recurrente', 'unico']
@@ -264,6 +267,7 @@ const domain = {
     if (!TIPOS.includes(tipo)) throw httpErr(400, `Tipo inválido (${TIPOS.join(', ')})`)
     const disponibles = getCollection('im_programas')
     const programas = Array.isArray(b.programas) ? b.programas.map(p => {
+      if (p.programaId === BASIC_PROGRAM_ID) return { programaId: BASIC_PROGRAM_ID, fechaInicio: null }
       if (!disponibles.some(pr => pr.id === p.programaId)) throw httpErr(400, `Programa no encontrado: ${p.programaId}`)
       return { programaId: p.programaId, fechaInicio: tipo === 'recurrente' ? (p.fechaInicio || siguienteLunes()) : null }
     }) : []
@@ -487,6 +491,8 @@ const server = http.createServer(async (req, res) => {
         im_suscripciones_catalogo: getCollection('im_suscripciones_catalogo'),
         im_calendarios: getCollection('im_calendarios').filter(c => c.clienteId === me.id),
         im_ejercicios: getCollection('im_ejercicios'),
+        im_respiraciones: getCollection('im_respiraciones'),
+        im_movilidad: getCollection('im_movilidad'),
       })
     }
 

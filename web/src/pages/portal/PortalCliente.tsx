@@ -1,10 +1,13 @@
 import { useState, useMemo, useEffect, useRef, type FormEvent } from 'react'
-import { type Cliente, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente } from '../../types'
+import { type Cliente, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente, type ContenidoItem, BASIC_PROGRAM_ID } from '../../types'
 import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosContext'
 import { useEjercicios } from '../../context/EjerciciosContext'
 import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
+import { useContenido } from '../../context/ContenidoContext'
 import { fusionarCalendarios, toISO, type SemanaFusion, type BloqueConColor } from '../../lib/calendario'
 import BloqueDetalleModal from './BloqueDetalleModal'
+import ContenidoCard from './ContenidoCard'
+import ContenidoDetalleModal from './ContenidoDetalleModal'
 import { exportarPDF, exportarExcel } from './exporters'
 import { apiPortalChangePassword, apiPortalRenew } from '../../lib/storage'
 import PasswordInput from '../../components/PasswordInput'
@@ -20,12 +23,13 @@ function fmtFechaLarga(iso: string): string {
   })
 }
 
-type Vista = 'semana' | 'todas' | 'dia'
+type Vista = 'semana' | 'todas' | 'dia' | 'contenido'
 
 export default function PortalCliente({ cliente, onLogout }: Props) {
   const { calendariosDeCliente } = useCalendarios()
   const { ejercicios } = useEjercicios()
   const { suscripciones, catalogo } = useClientes()
+  const { respiraciones, movilidad } = useContenido()
   const todosCalendarios = calendariosDeCliente(cliente.id)
 
   // ¿Una suscripción concede acceso a sus programas HOY?
@@ -55,6 +59,9 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
   const miscalendarios = todosCalendarios.filter(calVigente)
   const calendariosBloqueados = todosCalendarios.filter(c => !calVigente(c))
+
+  // "Basic" da acceso a Contenido (Respiración/Movilidad) en vez de un calendario
+  const tieneAccesoContenido = programasVigentes.has(BASIC_PROGRAM_ID)
 
   // Suscripciones del cliente que conceden acceso (recurrentes vigentes + pago único)
   const misSuscripcionesVigentes = suscripciones
@@ -103,12 +110,15 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
     return () => mq.removeEventListener('change', h)
   }, [])
 
-  // En móvil abrimos en vista 'día' (más cómoda); en escritorio, semana completa
-  const [vista, setVista]         = useState<Vista>(() =>
-    typeof window !== 'undefined' && window.innerWidth < 1024 ? 'dia' : 'semana')
+  // En móvil abrimos en vista 'día' (más cómoda); en escritorio, semana completa.
+  // Si no hay calendarios pero sí acceso a Contenido (solo "Basic"), abrir ahí.
+  const [vista, setVista]         = useState<Vista>(() => {
+    if (miscalendarios.length === 0 && tieneAccesoContenido) return 'contenido'
+    return typeof window !== 'undefined' && window.innerWidth < 1024 ? 'dia' : 'semana'
+  })
   const [semanaIdx, setSemanaIdx] = useState(0)
-  // En móvil se fuerza siempre la vista por día
-  const vistaEfectiva: Vista = esEscritorio ? vista : 'dia'
+  // En móvil se fuerza siempre la vista por día, salvo para Contenido (cabe bien en móvil)
+  const vistaEfectiva: Vista = vista === 'contenido' ? 'contenido' : (esEscritorio ? vista : 'dia')
 
   // Indice del día actual relativo al inicio
   const hoyISO = toISO(new Date())
@@ -134,6 +144,9 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
   // Bloque seleccionado para ver detalle
   const [bloqueSel, setBloqueSel] = useState<{ bloque: BloqueConColor; fecha: string } | null>(null)
+
+  // Elemento de Contenido (Respiración/Movilidad) seleccionado para ver detalle
+  const [contenidoSel, setContenidoSel] = useState<ContenidoItem | null>(null)
 
   // Menú de exportar
   const [menuExport, setMenuExport] = useState(false)
@@ -230,7 +243,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
   // ─── Render principal ───────────────────────────────────────────────────────
 
-  if (miscalendarios.length === 0) {
+  if (miscalendarios.length === 0 && !tieneAccesoContenido) {
     // Distinguir: ¿no tiene nada, o tiene pero todo fuera de fecha (bloqueado)?
     const soloBloqueados = calendariosBloqueados.length > 0
     return (
@@ -547,14 +560,15 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           )
         })()}
 
-        {/* Selector vista (Semana/Todas solo en escritorio) */}
-        <div className="flex gap-1 bg-tn-dark border border-tn-border rounded-xl p-1 w-fit">
+        {/* Selector vista (Semana/Todas solo en escritorio; Contenido si hay acceso "Basic") */}
+        <div className="flex gap-1 bg-tn-dark border border-tn-border rounded-xl p-1 w-fit flex-wrap">
           {([
             { id: 'dia' as Vista,    label: 'Día'    },
             ...(esEscritorio ? [
               { id: 'semana' as Vista, label: 'Semana' },
               { id: 'todas' as Vista,  label: 'Todas'  },
             ] : []),
+            ...(tieneAccesoContenido ? [{ id: 'contenido' as Vista, label: 'Contenido' }] : []),
           ]).map(t => (
             <button
               key={t.id}
@@ -578,8 +592,8 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           ))}
         </div>
 
-        {/* Aviso solo en móvil: la vista semanal es de escritorio */}
-        {!esEscritorio && (
+        {/* Aviso solo en móvil: la vista semanal es de escritorio (no aplica en Contenido) */}
+        {!esEscritorio && vista !== 'contenido' && (
           <p className="text-tn-muted text-xs flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -703,7 +717,41 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           </div>
         )}
 
-        {seleccionados.size === 0 && (
+        {/* Vista CONTENIDO (Respiración / Movilidad, acceso vía "Basic") */}
+        {vistaEfectiva === 'contenido' && (
+          <div className="space-y-8">
+            {respiraciones.length === 0 && movilidad.length === 0 ? (
+              <div className="card py-12 text-center">
+                <p className="text-tn-muted text-sm">Todavía no hay contenido disponible.</p>
+              </div>
+            ) : (
+              <>
+                {respiraciones.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-white font-bold text-lg">Respiración</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {respiraciones.map(item => (
+                        <ContenidoCard key={item.id} item={item} onAbrir={() => setContenidoSel(item)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {movilidad.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-white font-bold text-lg">Movilidad</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {movilidad.map(item => (
+                        <ContenidoCard key={item.id} item={item} onAbrir={() => setContenidoSel(item)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {vistaEfectiva !== 'contenido' && seleccionados.size === 0 && (
           <div className="card py-10 text-center">
             <p className="text-tn-muted text-sm">Selecciona al menos un programa para ver tu entrenamiento</p>
           </div>
@@ -774,6 +822,10 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           fecha={bloqueSel.fecha}
           onClose={() => setBloqueSel(null)}
         />
+      )}
+
+      {contenidoSel && (
+        <ContenidoDetalleModal item={contenidoSel} onClose={() => setContenidoSel(null)} />
       )}
 
       {renovar && (

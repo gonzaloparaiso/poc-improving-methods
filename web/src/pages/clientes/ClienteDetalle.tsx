@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion, type SuscripcionCliente, type ContactoCliente, CALENDAR_COLORS } from '../../types'
+import { type Cliente, type CalendarioCliente, type CatalogoSuscripcion, type SuscripcionCliente, type ContactoCliente, CALENDAR_COLORS, BASIC_PROGRAM_ID, BASIC_PROGRAM_NOMBRE } from '../../types'
 import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
 import { useCalendarios, fmtFecha, siguienteLunes } from '../../context/CalendariosContext'
@@ -130,7 +130,9 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   }
 
   const seleccionarCatalogo = (cat: CatalogoSuscripcion) => {
-    const tieneRecurrenteSinFecha = cat.tipo === 'recurrente' && cat.programas.some(p => p.programaId && !p.fechaInicio)
+    // "Basic" nunca lleva fecha (no se programa por semanas) — se ignora en este check
+    const tieneRecurrenteSinFecha = cat.tipo === 'recurrente' &&
+      cat.programas.some(p => p.programaId && p.programaId !== BASIC_PROGRAM_ID && !p.fechaInicio)
     if (cat.tipo === 'recurrente' && cat.programas.length > 0 && tieneRecurrenteSinFecha) {
       setCatPendiente(cat)
       setFechaPendiente(cat.programas[0]?.fechaInicio ?? siguienteLunes())
@@ -352,6 +354,9 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                         </div>
                         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                           {cat?.programas.map(pa => {
+                            if (pa.programaId === BASIC_PROGRAM_ID) {
+                              return <span key={pa.programaId} className="text-tn-muted text-xs">🌬️ {BASIC_PROGRAM_NOMBRE}</span>
+                            }
                             const pr = programas.find(p => p.id === pa.programaId)
                             return pr ? <span key={pa.programaId} className="text-tn-muted text-xs">📋 {pr.nombre}</span> : null
                           })}
@@ -665,7 +670,11 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                 <div className="text-center py-8"><p className="text-tn-muted text-sm">Este cliente ya tiene todas las suscripciones activas</p></div>
               ) : (
                 catalogoDisponible.map(cat => {
-                  const progsAsoc = cat.programas.map(pa => programas.find(p => p.id === pa.programaId)).filter(Boolean)
+                  const progsAsoc = cat.programas.map(pa =>
+                    pa.programaId === BASIC_PROGRAM_ID
+                      ? { id: BASIC_PROGRAM_ID, nombre: BASIC_PROGRAM_NOMBRE }
+                      : programas.find(p => p.id === pa.programaId),
+                  ).filter(Boolean)
                   return (
                     <button key={cat.id} onClick={() => seleccionarCatalogo(cat)} className="w-full card px-4 py-4 text-left hover:border-tn-yellow transition-all group">
                       <div className="flex items-start gap-3">

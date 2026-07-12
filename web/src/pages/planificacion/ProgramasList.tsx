@@ -85,15 +85,21 @@ export default function ProgramasList() {
   const [modalNuevo, setModalNuevo]           = useState(false)
   const [nombre, setNombre]                   = useState('')
   const [descripcion, setDescripcion]         = useState('')
+  const [error, setError]                     = useState('')
   const [borrando, setBorrando]               = useState<Programa | null>(null)
   const [clonando, setClonando]               = useState<Programa | null>(null)
 
   const handleCrear = (e: FormEvent) => {
     e.preventDefault()
     if (!nombre.trim()) return
-    const p = crearPrograma(nombre.trim(), descripcion.trim())
-    setNombre(''); setDescripcion(''); setModalNuevo(false)
-    setProgramaAbierto(p)
+    setError('')
+    try {
+      const p = crearPrograma(nombre.trim(), descripcion.trim())
+      setNombre(''); setDescripcion(''); setModalNuevo(false)
+      setProgramaAbierto(p)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear el programa')
+    }
   }
 
   // Vista de detalle
@@ -117,7 +123,7 @@ export default function ProgramasList() {
         {puede('planificaciones', 'crear') && (
           <button
             className="btn-primary flex items-center gap-2 self-start sm:self-auto"
-            onClick={() => setModalNuevo(true)}
+            onClick={() => { setError(''); setModalNuevo(true) }}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -138,7 +144,7 @@ export default function ProgramasList() {
           <p className="text-tn-muted text-sm mb-6 max-w-sm">
             Crea un programa para organizar el entrenamiento semanal durante varias semanas.
           </p>
-          <button className="btn-primary flex items-center gap-2" onClick={() => setModalNuevo(true)}>
+          <button className="btn-primary flex items-center gap-2" onClick={() => { setError(''); setModalNuevo(true) }}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
@@ -167,7 +173,7 @@ export default function ProgramasList() {
           <div className="card w-full sm:max-w-md sm:rounded-xl rounded-t-2xl rounded-b-none sm:rounded-b-xl">
             <div className="flex items-center justify-between p-6 border-b border-tn-border">
               <h3 className="text-white font-bold text-lg">Nuevo programa</h3>
-              <button onClick={() => setModalNuevo(false)} className="text-tn-muted hover:text-white p-1">
+              <button onClick={() => { setError(''); setModalNuevo(false) }} className="text-tn-muted hover:text-white p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -196,8 +202,11 @@ export default function ProgramasList() {
                   Se crearán <strong>4 semanas</strong> con 7 días cada una. Podrás añadir más semanas después.
                 </p>
               </div>
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">{error}</div>
+              )}
               <div className="flex gap-3 pt-1">
-                <button type="button" className="btn-secondary flex-1" onClick={() => setModalNuevo(false)}>
+                <button type="button" className="btn-secondary flex-1" onClick={() => { setError(''); setModalNuevo(false) }}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn-primary flex-1">
@@ -227,9 +236,13 @@ export default function ProgramasList() {
           defaultValue={`${clonando.nombre} (copia)`}
           confirmLabel="Clonar"
           onConfirm={nombre => {
-            const nuevo = clonarPrograma(clonando.id, nombre)
-            setClonando(null)
-            if (nuevo) setProgramaAbierto(nuevo)
+            try {
+              const nuevo = clonarPrograma(clonando.id, nombre)
+              setClonando(null)
+              if (nuevo) setProgramaAbierto(nuevo)
+            } catch (err) {
+              alert(err instanceof Error ? err.message : 'No se pudo clonar el programa')
+            }
           }}
           onCancel={() => setClonando(null)}
         />

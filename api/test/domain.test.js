@@ -129,6 +129,24 @@ test('crear producto: válido → 201; programa inexistente → 400; no-admin �
   assert.equal(denied.status, 403)
 })
 
+test('crear producto con "Basic" (pseudo-programa reservado): no necesita existir en im_programas y siempre queda sin fecha', async () => {
+  const token = await adminToken()
+  const BASIC_PROGRAM_ID = '__basic__' // debe coincidir con BASIC_PROGRAM_ID en web/src/types/index.ts y api/server.js
+  const r = await api('POST', '/products', {
+    token,
+    body: {
+      nombre: 'Plan con Basic', tipo: 'recurrente',
+      programas: [{ programaId: BASIC_PROGRAM_ID, fechaInicio: '2099-01-01' }, { programaId: 'prog1', fechaInicio: null }],
+    },
+  })
+  assert.equal(r.status, 201)
+  const basicEntry = r.data.programas.find(p => p.programaId === BASIC_PROGRAM_ID)
+  assert.ok(basicEntry, 'debe conservar la entrada de Basic')
+  assert.equal(basicEntry.fechaInicio, null, 'Basic nunca lleva fecha, aunque se envíe una')
+  const progReal = r.data.programas.find(p => p.programaId === 'prog1')
+  assert.ok(progReal.fechaInicio, 'el programa real sí recibe una fecha por defecto')
+})
+
 // ── Crear cliente ────────────────────────────────────────────────────────────
 test('crear cliente: 201, sin contraseña en la respuesta y con suscripción "Test" automática', async () => {
   const token = await adminToken()
