@@ -1,0 +1,45 @@
+import { type ContenidoItem } from '../../types'
+
+export default function ContenidoListItem({ item, onAbrir }: { item: ContenidoItem; onAbrir: () => void }) {
+  return (
+    <button onClick={onAbrir} className="w-full flex items-center gap-3 card p-3 text-left group hover:border-tn-yellow/50 transition-all">
+      <div className="w-14 h-14 rounded-lg bg-tn-dark flex-shrink-0 overflow-hidden">
+        {item.thumbnail ? (
+          <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-tn-yellow/10 to-tn-dark">
+            <svg className="w-6 h-6 text-tn-yellow/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M4 8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <h4 className="text-white font-bold text-sm truncate group-hover:text-tn-yellow transition-colors">{item.titulo}</h4>
+          {item.mediaTipo && (
+            <span className="text-tn-muted flex-shrink-0">
+              {item.mediaTipo === 'audio' ? (
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" /></svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+              )}
+            </span>
+          )}
+        </div>
+        {item.descripcion && <p className="text-tn-muted text-xs mt-0.5 line-clamp-1">{item.descripcion}</p>}
+        {item.etiquetas.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {item.etiquetas.slice(0, 3).map(tag => (
+              <span key={tag} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-tn-yellow/10 text-tn-yellow">{tag}</span>
+            ))}
+          </div>
+        )}
+      </div>
+      <svg className="w-4 h-4 text-tn-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
+    </button>
+  )
+}

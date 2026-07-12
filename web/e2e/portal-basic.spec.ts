@@ -24,15 +24,17 @@ test('cliente con programa + "Basic" combinados ve tanto su calendario como la p
 
   await tabContenido.click()
   await expect(page.getByText('Respiración', { exact: true })).toBeVisible()
-  await expect(page.getByText('Respiración diafragmática')).toBeVisible()
+  // La sección renderiza a la vez la cuadrícula (escritorio) y la lista
+  // (móvil); en este viewport de escritorio la cuadrícula es la visible.
+  await expect(page.getByText('Respiración diafragmática').first()).toBeVisible()
 
   // abrir el detalle de una respiración
-  await page.getByText('Respiración diafragmática').click()
+  await page.getByText('Respiración diafragmática').first().click()
   await expect(page.getByRole('button', { name: 'Cerrar' })).toBeVisible()
 })
 
 test('cliente con SOLO "Basic" (sin programa real) entra directo a Contenido, sin pantalla de "sin planificación"', async ({ page }) => {
   await loginCliente(page, 'basic@test.com', 'basic123')
   await expect(page.getByText('Aún no tienes planificación')).toHaveCount(0)
-  await expect(page.getByText('Respiración diafragmática')).toBeVisible()
+  await expect(page.getByText('Respiración diafragmática').first()).toBeVisible()
 })

@@ -6,7 +6,7 @@ import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import { useContenido } from '../../context/ContenidoContext'
 import { fusionarCalendarios, toISO, type SemanaFusion, type BloqueConColor } from '../../lib/calendario'
 import BloqueDetalleModal from './BloqueDetalleModal'
-import ContenidoCard from './ContenidoCard'
+import ContenidoSeccion from './ContenidoSeccion'
 import ContenidoDetalleModal from './ContenidoDetalleModal'
 import { exportarPDF, exportarExcel } from './exporters'
 import { apiPortalChangePassword, apiPortalRenew } from '../../lib/storage'
@@ -719,36 +719,12 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
         {/* Vista CONTENIDO (Respiración / Movilidad, acceso vía "Basic") */}
         {vistaEfectiva === 'contenido' && (
-          <div className="space-y-8">
-            {respiraciones.length === 0 && movilidad.length === 0 ? (
-              <div className="card py-12 text-center">
-                <p className="text-tn-muted text-sm">Todavía no hay contenido disponible.</p>
-              </div>
-            ) : (
-              <>
-                {respiraciones.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-white font-bold text-lg">Respiración</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {respiraciones.map(item => (
-                        <ContenidoCard key={item.id} item={item} onAbrir={() => setContenidoSel(item)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {movilidad.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-white font-bold text-lg">Movilidad</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {movilidad.map(item => (
-                        <ContenidoCard key={item.id} item={item} onAbrir={() => setContenidoSel(item)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          <ContenidoSeccion
+            clienteId={cliente.id}
+            respiraciones={respiraciones}
+            movilidad={movilidad}
+            onAbrir={item => setContenidoSel(item)}
+          />
         )}
 
         {vistaEfectiva !== 'contenido' && seleccionados.size === 0 && (
