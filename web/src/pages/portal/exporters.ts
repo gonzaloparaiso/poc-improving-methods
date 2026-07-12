@@ -2,7 +2,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { type CalendarioCliente, DIAS_SEMANA } from '../../types'
-import { type Ejercicio } from '../../types'
+import { type Bloque, type Ejercicio } from '../../types'
 
 // ─── Helpers comunes ───────────────────────────────────────────────────────────
 
@@ -54,33 +54,6 @@ export function aplanar(cals: CalendarioCliente[], catalogo: Ejercicio[]): FilaP
   })
   filas.sort((a, b) => a.fecha.localeCompare(b.fecha))
   return filas
-}
-
-function descargar(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-function csvEscape(v: string): string {
-  if (v == null) return ''
-  const s = String(v)
-  if (s.includes('"') || s.includes(',') || s.includes('\n')) {
-    return '"' + s.replace(/"/g, '""') + '"'
-  }
-  return s
-}
-
-function toCSV(headers: string[], rows: (string | number)[][]): string {
-  const lines = [headers.join(',')]
-  rows.forEach(r => lines.push(r.map(c => csvEscape(String(c))).join(',')))
-  // BOM para que Excel lo abra en UTF-8
-  return '﻿' + lines.join('\n')
 }
 
 // ─── PDF ───────────────────────────────────────────────────────────────────────
@@ -204,56 +177,31 @@ export function exportarExcel(cals: CalendarioCliente[], clienteNombre: string, 
   XLSX.writeFile(wb, `planificacion-${clienteNombre.toLowerCase().replace(/\s+/g, '-')}.xlsx`)
 }
 
-// ─── Aimharder (CSV) ──────────────────────────────────────────────────────────
-// Formato común para imports de Aimharder: fecha + clase/wod en texto.
-// Columnas: date, time, classname, description
+// ─── Copiar un bloque como texto plano (Aimharder / Wodbuster) ────────────────
+// Ninguna de las dos plataformas permite importar entrenamientos vía API, así
+// que en vez de exportar un fichero, se copia el WOD de una sesión al
+// portapapeles para pegarlo directamente como texto en la app del cliente.
 
-export function exportarAimharder(cals: CalendarioCliente[], clienteNombre: string, catalogo: Ejercicio[]) {
-  const filas = aplanar(cals, catalogo)
-  const rows = filas.map(f => {
-    const desc = [
-      f.bloque,
-      f.cronometro ? `⏱ ${f.cronometro}` : '',
-      f.instrucciones,
-      f.ejercicios,
-      f.notas ? `Notas: ${f.notas}` : '',
-    ].filter(Boolean).join('\n')
-    return [
-      f.fecha,           // date YYYY-MM-DD
-      '07:00',           // time (placeholder)
-      f.programa,        // classname
-      desc,              // description (multilínea)
-    ]
-  })
-  const csv = toCSV(['date', 'time', 'classname', 'description'], rows)
-  descargar(
-    new Blob([csv], { type: 'text/csv;charset=utf-8' }),
-    `aimharder-${clienteNombre.toLowerCase().replace(/\s+/g, '-')}.csv`,
-  )
+function lineaEjercicio(ej: Bloque['ejercicios'][number], catalogo: Ejercicio[]): string {
+  const nombre = catalogo.find(e => e.id === ej.ejercicioId)?.nombre ?? '—'
+  const partes = [nombre]
+  if (ej.series && ej.reps) partes.push(`${ej.series}×${ej.reps}`)
+  else if (ej.reps) partes.push(ej.reps)
+  if (ej.descanso) partes.push(`descanso ${ej.descanso}`)
+  const linea = '- ' + partes.join(' ')
+  return ej.notas ? `${linea} (${ej.notas})` : linea
 }
 
-// ─── Wodbuster (CSV) ──────────────────────────────────────────────────────────
-// Columnas habituales: Fecha, Tipo, Nombre, Descripción, Notas
-
-export function exportarWodbuster(cals: CalendarioCliente[], clienteNombre: string, catalogo: Ejercicio[]) {
-  const filas = aplanar(cals, catalogo)
-  const rows = filas.map(f => {
-    const desc = [
-      f.cronometro ? `Cronómetro: ${f.cronometro}` : '',
-      f.instrucciones,
-      f.ejercicios,
-    ].filter(Boolean).join('\n')
-    return [
-      f.fecha,
-      f.programa,        // Tipo / box
-      f.bloque,          // Nombre del WOD
-      desc,              // Descripción
-      f.notas,
-    ]
-  })
-  const csv = toCSV(['Fecha', 'Tipo', 'Nombre', 'Descripción', 'Notas'], rows)
-  descargar(
-    new Blob([csv], { type: 'text/csv;charset=utf-8' }),
-    `wodbuster-${clienteNombre.toLowerCase().replace(/\s+/g, '-')}.csv`,
-  )
+/** Texto plano de una sesión (bloque) listo para pegar en Aimharder/Wodbuster. */
+export function textoBloque(bloque: Bloque, catalogo: Ejercicio[]): string {
+  const lineas: string[] = []
+  if (bloque.nombre) lineas.push(bloque.nombre)
+  if (bloque.cronometro) lineas.push(`⏱ ${bloque.cronometro}`)
+  if (bloque.instrucciones) lineas.push('', bloque.instrucciones)
+  if (bloque.ejercicios.length) {
+    lineas.push('')
+    bloque.ejercicios.forEach(ej => lineas.push(lineaEjercicio(ej, catalogo)))
+  }
+  if (bloque.notas) lineas.push('', `Notas: ${bloque.notas}`)
+  return lineas.join('\n')
 }

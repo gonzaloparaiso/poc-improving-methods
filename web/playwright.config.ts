@@ -12,6 +12,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'retain-on-failure',
+    permissions: ['clipboard-read', 'clipboard-write'],
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

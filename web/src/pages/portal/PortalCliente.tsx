@@ -5,7 +5,7 @@ import { useEjercicios } from '../../context/EjerciciosContext'
 import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import { fusionarCalendarios, toISO, type SemanaFusion, type BloqueConColor } from '../../lib/calendario'
 import BloqueDetalleModal from './BloqueDetalleModal'
-import { exportarPDF, exportarExcel, exportarAimharder, exportarWodbuster } from './exporters'
+import { exportarPDF, exportarExcel } from './exporters'
 import { apiPortalChangePassword, apiPortalRenew } from '../../lib/storage'
 import PasswordInput from '../../components/PasswordInput'
 
@@ -144,12 +144,10 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
   const nombreCompleto = `${cliente.nombre}${cliente.apellido ? ' ' + cliente.apellido : ''}`
   const calsAExportar = calsActivos.length > 0 ? calsActivos : miscalendarios
 
-  const handleExport = (tipo: 'pdf' | 'excel' | 'aimharder' | 'wodbuster') => {
+  const handleExport = (tipo: 'pdf' | 'excel') => {
     setMenuExport(false)
-    if (tipo === 'pdf')       exportarPDF(calsAExportar, nombreCompleto, ejercicios)
-    if (tipo === 'excel')     exportarExcel(calsAExportar, nombreCompleto, ejercicios)
-    if (tipo === 'aimharder') exportarAimharder(calsAExportar, nombreCompleto, ejercicios)
-    if (tipo === 'wodbuster') exportarWodbuster(calsAExportar, nombreCompleto, ejercicios)
+    if (tipo === 'pdf')   exportarPDF(calsAExportar, nombreCompleto, ejercicios)
+    if (tipo === 'excel') exportarExcel(calsAExportar, nombreCompleto, ejercicios)
   }
 
   const toggleCal = (id: string) => {
@@ -369,10 +367,8 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                     </div>
                     <div className="py-1">
                       {[
-                        { id: 'pdf' as const,       label: 'PDF',        desc: 'Documento imprimible',           color: 'text-red-400' },
-                        { id: 'excel' as const,     label: 'Excel',      desc: 'Hoja por programa',              color: 'text-green-400' },
-                        { id: 'aimharder' as const, label: 'Aimharder',  desc: 'CSV importable',                 color: 'text-blue-400' },
-                        { id: 'wodbuster' as const, label: 'Wodbuster',  desc: 'CSV importable',                 color: 'text-purple-400' },
+                        { id: 'pdf' as const,   label: 'PDF',   desc: 'Documento imprimible', color: 'text-red-400' },
+                        { id: 'excel' as const, label: 'Excel', desc: 'Hoja por programa',    color: 'text-green-400' },
                       ].map(opt => (
                         <button
                           key={opt.id}

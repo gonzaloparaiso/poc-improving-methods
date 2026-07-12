@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { type Bloque, CALENDAR_COLORS } from '../../types'
 import { useEjercicios } from '../../context/EjerciciosContext'
 import { type Ejercicio } from '../../types'
 import EjercicioDetalleModal from './EjercicioDetalleModal'
+import { textoBloque } from './exporters'
+import { copiarAlPortapapeles } from '../../lib/clipboard'
 
 interface Props {
   bloque: Bloque
@@ -24,6 +26,18 @@ export default function BloqueDetalleModal({ bloque, programaNombre, colorKey, f
     ej: Ejercicio
     series?: string; reps?: string; descanso?: string; notas?: string
   } | null>(null)
+
+  const [copiado, setCopiado] = useState<'aimharder' | 'wodbuster' | null>(null)
+  const copiadoTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (copiadoTimeout.current) clearTimeout(copiadoTimeout.current) }, [])
+
+  const copiar = async (destino: 'aimharder' | 'wodbuster') => {
+    const ok = await copiarAlPortapapeles(textoBloque(bloque, ejercicios))
+    if (!ok) return
+    setCopiado(destino)
+    if (copiadoTimeout.current) clearTimeout(copiadoTimeout.current)
+    copiadoTimeout.current = setTimeout(() => setCopiado(null), 2000)
+  }
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -67,6 +81,64 @@ export default function BloqueDetalleModal({ bloque, programaNombre, colorKey, f
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+          {/* Descripción: copiar el WOD como texto plano (Aimharder/Wodbuster no permiten importar vía API) */}
+          <div className="bg-tn-dark border border-tn-border rounded-xl p-4">
+            <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+              <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              Descripción
+            </h4>
+            <p className="text-tn-muted text-xs mb-3">
+              Copia esta sesión para pegarla como texto en Aimharder o Wodbuster.
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => copiar('aimharder')}
+                className="flex-1 min-w-[140px] btn-secondary flex items-center justify-center gap-2 text-sm py-2"
+              >
+                {copiado === 'aimharder' ? (
+                  <>
+                    <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-green-400">¡Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Copiar para Aimharder
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => copiar('wodbuster')}
+                className="flex-1 min-w-[140px] btn-secondary flex items-center justify-center gap-2 text-sm py-2"
+              >
+                {copiado === 'wodbuster' ? (
+                  <>
+                    <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-green-400">¡Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Copiar para Wodbuster
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
 
           {/* Instrucciones */}
           {bloque.instrucciones && (
