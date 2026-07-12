@@ -68,74 +68,76 @@ export default function ContenidoSeccion({ clienteId, respiraciones, movilidad, 
   )
 
   return (
-    <div className="lg:grid lg:grid-cols-[1fr_260px] lg:gap-6 lg:items-start">
-      <div className="space-y-6 lg:order-1 min-w-0">
-        {/* Buscador */}
-        <div className="relative">
-          <svg className="w-4 h-4 text-tn-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar por nombre, descripción o etiqueta…"
-            className="input-field pl-10 w-full"
-          />
+    <div className="space-y-6">
+      {/* Buscador: ancho completo */}
+      <div className="relative">
+        <svg className="w-4 h-4 text-tn-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="text"
+          value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+          placeholder="Buscar por nombre, descripción o etiqueta…"
+          className="input-field pl-10 w-full"
+        />
+      </div>
+
+      <div className="lg:grid lg:grid-cols-[1fr_260px] lg:gap-6 lg:items-start">
+        <div className="space-y-8 lg:order-1 min-w-0">
+          {/* Favoritas en móvil: tira horizontal (en escritorio va en la barra lateral) */}
+          {favoritas.length > 0 && (
+            <div className="lg:hidden space-y-2">
+              <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider">Tus favoritas</p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {favoritas.map(item => (
+                  <button key={item.id} onClick={() => abrir(item)}
+                    className="flex-shrink-0 flex items-center gap-2 bg-tn-card border border-tn-border rounded-xl px-3 py-2 hover:border-tn-yellow transition-all max-w-[220px]">
+                    <div className="w-8 h-8 rounded-lg bg-tn-dark flex-shrink-0 overflow-hidden">
+                      {item.thumbnail && <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />}
+                    </div>
+                    <span className="text-white text-xs font-semibold truncate">{item.titulo}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!hayResultados ? (
+            <div className="card py-10 text-center">
+              <p className="text-tn-muted text-sm">Sin resultados para "{busqueda}"</p>
+            </div>
+          ) : (
+            <>
+              {renderGrupo('Respiración', respiracionesFiltradas)}
+              {renderGrupo('Movilidad', movilidadFiltrada)}
+            </>
+          )}
         </div>
 
-        {/* Favoritas en móvil: tira horizontal (en escritorio va en la barra lateral) */}
-        {favoritas.length > 0 && (
-          <div className="lg:hidden space-y-2">
-            <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider">Tus favoritas</p>
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {favoritas.map(item => (
+        {/* Favoritas en escritorio: barra lateral derecha, alineada con "Respiración" */}
+        <aside className="hidden lg:block lg:order-2 space-y-3">
+          <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider">Tus favoritas</p>
+          {favoritas.length === 0 ? (
+            <div className="card p-4">
+              <p className="text-tn-muted text-xs">Aún no tienes respiraciones favoritas. Abre alguna y aparecerá aquí.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {favoritas.map((item, i) => (
                 <button key={item.id} onClick={() => abrir(item)}
-                  className="flex-shrink-0 flex items-center gap-2 bg-tn-card border border-tn-border rounded-xl px-3 py-2 hover:border-tn-yellow transition-all max-w-[220px]">
-                  <div className="w-8 h-8 rounded-lg bg-tn-dark flex-shrink-0 overflow-hidden">
+                  className="w-full flex items-center gap-3 card p-2.5 text-left group hover:border-tn-yellow/50 transition-all">
+                  <span className="text-tn-yellow font-black text-sm w-4 flex-shrink-0 text-center">{i + 1}</span>
+                  <div className="w-10 h-10 rounded-lg bg-tn-dark flex-shrink-0 overflow-hidden">
                     {item.thumbnail && <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />}
                   </div>
-                  <span className="text-white text-xs font-semibold truncate">{item.titulo}</span>
+                  <span className="text-white text-sm font-semibold truncate group-hover:text-tn-yellow transition-colors">{item.titulo}</span>
                 </button>
               ))}
             </div>
-          </div>
-        )}
-
-        {!hayResultados ? (
-          <div className="card py-10 text-center">
-            <p className="text-tn-muted text-sm">Sin resultados para "{busqueda}"</p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {renderGrupo('Respiración', respiracionesFiltradas)}
-            {renderGrupo('Movilidad', movilidadFiltrada)}
-          </div>
-        )}
+          )}
+        </aside>
       </div>
-
-      {/* Favoritas en escritorio: barra lateral derecha */}
-      <aside className="hidden lg:block lg:order-2 lg:sticky lg:top-4 space-y-3">
-        <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider">Tus favoritas</p>
-        {favoritas.length === 0 ? (
-          <div className="card p-4">
-            <p className="text-tn-muted text-xs">Aún no tienes respiraciones favoritas. Abre alguna y aparecerá aquí.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {favoritas.map((item, i) => (
-              <button key={item.id} onClick={() => abrir(item)}
-                className="w-full flex items-center gap-3 card p-2.5 text-left group hover:border-tn-yellow/50 transition-all">
-                <span className="text-tn-yellow font-black text-sm w-4 flex-shrink-0 text-center">{i + 1}</span>
-                <div className="w-10 h-10 rounded-lg bg-tn-dark flex-shrink-0 overflow-hidden">
-                  {item.thumbnail && <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />}
-                </div>
-                <span className="text-white text-sm font-semibold truncate group-hover:text-tn-yellow transition-colors">{item.titulo}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </aside>
     </div>
   )
 }
