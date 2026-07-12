@@ -115,8 +115,9 @@ export default function ContenidoSeccion({ clienteId, respiraciones, movilidad, 
           )}
         </div>
 
-        {/* Favoritas en escritorio: barra lateral derecha, alineada con "Respiración" */}
+        {/* Favoritas en escritorio: barra lateral derecha, alineada con las miniaturas (debajo del título "Respiración") */}
         <aside className="hidden lg:block lg:order-2 space-y-3">
+          <h3 className="invisible text-lg" aria-hidden>&nbsp;</h3>
           <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider">Tus favoritas</p>
           {favoritas.length === 0 ? (
             <div className="card p-4">
