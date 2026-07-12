@@ -19,6 +19,13 @@ describe('puedeHacer (permisos por rol)', () => {
     expect(puedeHacer('head_coach', 'clientes', 'ver')).toBe(true)
     expect(puedeHacer('head_coach', 'clientes', 'crear')).toBe(false)
   })
+  it('contenido: el coach puede crear/editar pero no borrar; head_coach y admin sí borran', () => {
+    expect(puedeHacer('coach', 'contenido', 'crear')).toBe(true)
+    expect(puedeHacer('coach', 'contenido', 'editar')).toBe(true)
+    expect(puedeHacer('coach', 'contenido', 'borrar')).toBe(false)
+    expect(puedeHacer('head_coach', 'contenido', 'borrar')).toBe(true)
+    expect(puedeHacer('administrador', 'contenido', 'borrar')).toBe(true)
+  })
   it('rol o sección desconocidos devuelven false', () => {
     // @ts-expect-error rol inválido a propósito
     expect(puedeHacer('intruso', 'clientes', 'ver')).toBe(false)

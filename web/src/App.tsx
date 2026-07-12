@@ -5,6 +5,7 @@ import { PlanificacionProvider } from './context/PlanificacionContext'
 import { ClientesProvider } from './context/ClientesContext'
 import { CalendariosProvider } from './context/CalendariosContext'
 import { EjerciciosProvider } from './context/EjerciciosContext'
+import { ContenidoProvider } from './context/ContenidoContext'
 import { usePermisos } from './hooks/usePermisos'
 import { logout as apiLogout } from './lib/storage'
 import { type Seccion, type Cliente } from './types'
@@ -15,6 +16,7 @@ import Administracion from './pages/Administracion'
 import Clientes from './pages/Clientes'
 import Suscripciones from './pages/Suscripciones'
 import Planificacion from './pages/Planificacion'
+import Contenido from './pages/Contenido'
 import ClienteLogin from './pages/portal/ClienteLogin'
 import ClienteReset from './pages/portal/ClienteReset'
 import PortalCliente from './pages/portal/PortalCliente'
@@ -83,6 +85,7 @@ function App() {
       <CalendariosProvider>
       <EjerciciosProvider>
       <PlanificacionProvider>
+      <ContenidoProvider>
         <BrowserRouter>
           <Routes>
             {/* ── Panel de administradores (staff) bajo /admin ── */}
@@ -106,6 +109,9 @@ function App() {
                       <Route path="clientes"       element={<Clientes />} />
                       <Route path="suscripciones"  element={<Suscripciones />} />
                       <Route path="planificacion"  element={<Planificacion />} />
+                      <Route path="contenido" element={
+                        <Guard seccion="contenido"><Contenido /></Guard>
+                      } />
                       <Route path="*" element={<HomeRedirect />} />
                     </Routes>
                   </Layout>
@@ -131,6 +137,7 @@ function App() {
             />
           </Routes>
         </BrowserRouter>
+      </ContenidoProvider>
       </PlanificacionProvider>
       </EjerciciosProvider>
       </CalendariosProvider>

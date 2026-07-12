@@ -71,6 +71,27 @@ test('KV: PUT y GET de una colección hace round-trip', async () => {
   assert.equal(get.data[0].nombre, 'Sentadilla')
 })
 
+test('KV: Contenido (im_respiraciones / im_movilidad) hace round-trip', async () => {
+  const token = await adminToken()
+  const respiraciones = [{
+    id: 'r1', titulo: 'Respiración de caja', descripcion: 'Inhala, retén, exhala, retén (4-4-4-4)',
+    etiquetas: ['concentración'], mediaTipo: null, mediaUrl: '', mediaNombre: '', mediaSize: 0,
+    thumbnail: '', creadoEn: new Date().toISOString(),
+  }]
+  const putR = await api('PUT', '/data/im_respiraciones', { token, body: respiraciones })
+  assert.equal(putR.status, 200)
+  const getR = await api('GET', '/data/im_respiraciones', { token })
+  assert.equal(getR.status, 200)
+  assert.equal(getR.data[0].titulo, 'Respiración de caja')
+
+  // im_movilidad empieza vacío pero debe aceptar PUT/GET igualmente
+  const putM = await api('PUT', '/data/im_movilidad', { token, body: [] })
+  assert.equal(putM.status, 200)
+  const getM = await api('GET', '/data/im_movilidad', { token })
+  assert.equal(getM.status, 200)
+  assert.deepEqual(getM.data, [])
+})
+
 test('KV: clave no permitida → 400', async () => {
   const token = await adminToken()
   const r = await api('PUT', '/data/tabla_prohibida', { token, body: [] })

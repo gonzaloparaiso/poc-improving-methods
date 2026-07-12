@@ -44,6 +44,7 @@ const SESSION_TTL = 30 * 24 * 60 * 60 * 1000 // 30 días
 const ARRAY_KEYS = [
   'im_users', 'im_clientes', 'im_suscripciones_catalogo', 'im_suscripciones_clientes',
   'im_calendarios', 'im_programas', 'im_plantillas', 'im_ejercicios',
+  'im_respiraciones', 'im_movilidad',
 ]
 const OBJECT_KEY = 'im_tareas_completadas'
 const ALLOWED_KEYS = new Set([...ARRAY_KEYS, OBJECT_KEY])

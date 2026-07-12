@@ -16,6 +16,8 @@ export const SYNC_KEYS = [
   'im_plantillas',
   'im_ejercicios',
   'im_tareas_completadas',
+  'im_respiraciones',
+  'im_movilidad',
 ] as const
 
 // ── Token de sesión ───────────────────────────────────────────────────────────

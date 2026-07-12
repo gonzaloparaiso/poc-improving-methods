@@ -29,6 +29,7 @@ export type Seccion =
   | 'suscripciones'
   | 'planificaciones'
   | 'entrenamientos'
+  | 'contenido'
 
 export type Accion = 'ver' | 'crear' | 'editar' | 'borrar'
 
@@ -42,6 +43,7 @@ export const PERMISOS: Record<Rol, MatrizPermisos> = {
     suscripciones:   ['ver', 'crear', 'editar', 'borrar'],
     planificaciones: ['ver', 'crear', 'editar', 'borrar'],
     entrenamientos:  ['ver', 'crear', 'editar', 'borrar'],
+    contenido:       ['ver', 'crear', 'editar', 'borrar'],
   },
   head_coach: {
     dashboard:       ['ver'],
@@ -49,6 +51,7 @@ export const PERMISOS: Record<Rol, MatrizPermisos> = {
     suscripciones:   ['ver'],
     planificaciones: ['ver', 'crear', 'editar', 'borrar'],
     entrenamientos:  ['ver', 'crear', 'editar', 'borrar'],
+    contenido:       ['ver', 'crear', 'editar', 'borrar'],
   },
   coach: {
     dashboard:       ['ver'],
@@ -56,6 +59,7 @@ export const PERMISOS: Record<Rol, MatrizPermisos> = {
     suscripciones:   ['ver'],
     planificaciones: ['ver', 'crear', 'editar'],
     entrenamientos:  ['ver', 'crear', 'editar'],
+    contenido:       ['ver', 'crear', 'editar'],
   },
 }
 
@@ -223,4 +227,20 @@ export interface Programa {
   semanas: Semana[]
   creadoEn: string
   adjuntos?: Adjunto[]
+}
+
+// ─── Contenido (Respiración / Movilidad) ───────────────────────────────────────
+export type TipoMedia = 'audio' | 'video'
+
+export interface ContenidoItem {
+  id: string
+  titulo: string
+  descripcion: string
+  etiquetas: string[]
+  mediaTipo: TipoMedia | null
+  mediaUrl: string        // data URL del archivo subido (vacío si no hay)
+  mediaNombre: string     // nombre original del fichero subido
+  mediaSize: number       // bytes
+  thumbnail: string       // data URL de la miniatura (vacío si no hay)
+  creadoEn: string
 }
