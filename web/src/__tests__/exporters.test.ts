@@ -49,9 +49,10 @@ describe('textoBloque', () => {
     expect(texto).toContain('- —')
   })
 
-  it('incluye las notas del bloque al final, con prefijo "Notas:"', () => {
-    const texto = textoBloque(bloque({ notas: 'Escala si hace falta' }), catalogo)
-    expect(texto.trim().endsWith('Notas: Escala si hace falta')).toBe(true)
+  it('NO incluye las notas del bloque (solo se copian instrucciones + ejercicios)', () => {
+    const texto = textoBloque(bloque({ instrucciones: 'Calienta bien', notas: 'Escala si hace falta' }), catalogo)
+    expect(texto).not.toContain('Escala si hace falta')
+    expect(texto).not.toContain('Notas:')
   })
 
   it('omite las secciones vacías (sin líneas en blanco de más)', () => {

@@ -202,6 +202,5 @@ export function textoBloque(bloque: Bloque, catalogo: Ejercicio[]): string {
     lineas.push('')
     bloque.ejercicios.forEach(ej => lineas.push(lineaEjercicio(ej, catalogo)))
   }
-  if (bloque.notas) lineas.push('', `Notas: ${bloque.notas}`)
   return lineas.join('\n')
 }
