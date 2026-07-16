@@ -1,8 +1,22 @@
 import { type ContenidoItem } from '../../types'
 
-export default function ContenidoCard({ item, onAbrir }: { item: ContenidoItem; onAbrir: () => void }) {
+interface Props {
+  item: ContenidoItem
+  onAbrir: () => void
+  favorito: boolean
+  onToggleFavorito: () => void
+}
+
+export default function ContenidoCard({ item, onAbrir, favorito, onToggleFavorito }: Props) {
   return (
-    <button onClick={onAbrir} className="card overflow-hidden text-left group hover:border-tn-yellow/50 transition-all flex flex-col">
+    // No es <button> a propósito: contiene el botón de favorito, y HTML no permite <button> anidados.
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onAbrir}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAbrir() } }}
+      className="card overflow-hidden text-left group hover:border-tn-yellow/50 transition-all flex flex-col cursor-pointer"
+    >
       <div className="aspect-video bg-tn-dark relative flex-shrink-0">
         {item.thumbnail ? (
           <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
@@ -14,6 +28,17 @@ export default function ContenidoCard({ item, onAbrir }: { item: ContenidoItem; 
             </svg>
           </div>
         )}
+        <button
+          onClick={e => { e.stopPropagation(); onToggleFavorito() }}
+          title={favorito ? 'Quitar de favoritas' : 'Añadir a favoritas'}
+          className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-black/80 transition-colors"
+        >
+          <svg className={`w-4.5 h-4.5 transition-colors ${favorito ? 'text-tn-yellow' : 'text-white/70'}`}
+            fill={favorito ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={favorito ? 0 : 2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round"
+              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+        </button>
         {item.mediaTipo && (
           <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 bg-black/70 text-white text-xs font-semibold px-2 py-1 rounded-full backdrop-blur-sm">
             {item.mediaTipo === 'audio' ? (
@@ -36,6 +61,6 @@ export default function ContenidoCard({ item, onAbrir }: { item: ContenidoItem; 
           </div>
         )}
       </div>
-    </button>
+    </div>
   )
 }

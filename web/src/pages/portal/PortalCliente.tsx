@@ -4,7 +4,8 @@ import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosCont
 import { useEjercicios } from '../../context/EjerciciosContext'
 import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import { useContenido } from '../../context/ContenidoContext'
-import { fusionarCalendarios, toISO, type SemanaFusion, type BloqueConColor } from '../../lib/calendario'
+import { fusionarCalendarios, toISO, lunesDe, type SemanaFusion, type BloqueConColor } from '../../lib/calendario'
+import { obtenerPeriodicas, añadirPeriodica, eliminarPeriodica, periodicasDeDia } from '../../lib/contenidoPeriodico'
 import BloqueDetalleModal from './BloqueDetalleModal'
 import ContenidoSeccion from './ContenidoSeccion'
 import ContenidoDetalleModal from './ContenidoDetalleModal'
@@ -23,7 +24,8 @@ function fmtFechaLarga(iso: string): string {
   })
 }
 
-type Vista = 'semana' | 'todas' | 'dia' | 'contenido'
+type Vista = 'semana' | 'todas' | 'dia'
+type Seccion = 'entrenamiento' | 'contenido'
 
 export default function PortalCliente({ cliente, onLogout }: Props) {
   const { calendariosDeCliente } = useCalendarios()
@@ -110,15 +112,20 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
     return () => mq.removeEventListener('change', h)
   }, [])
 
+  // Sección principal: Entrenamiento (planificación) o Contenido (Respiración/Movilidad).
+  // Si no hay calendarios pero sí acceso a Contenido (solo "Basic"), abrir en Contenido.
+  const [seccion, setSeccion] = useState<Seccion>(() =>
+    miscalendarios.length === 0 && tieneAccesoContenido ? 'contenido' : 'entrenamiento')
+
   // En móvil abrimos en vista 'día' (más cómoda); en escritorio, semana completa.
-  // Si no hay calendarios pero sí acceso a Contenido (solo "Basic"), abrir ahí.
-  const [vista, setVista]         = useState<Vista>(() => {
-    if (miscalendarios.length === 0 && tieneAccesoContenido) return 'contenido'
-    return typeof window !== 'undefined' && window.innerWidth < 1024 ? 'dia' : 'semana'
-  })
+  const [vista, setVista]         = useState<Vista>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 1024 ? 'dia' : 'semana')
   const [semanaIdx, setSemanaIdx] = useState(0)
-  // En móvil se fuerza siempre la vista por día, salvo para Contenido (cabe bien en móvil)
-  const vistaEfectiva: Vista = vista === 'contenido' ? 'contenido' : (esEscritorio ? vista : 'dia')
+  // En móvil se fuerza siempre la vista por día
+  const vistaEfectiva: Vista = esEscritorio ? vista : 'dia'
+
+  // Respiraciones programadas por el cliente en su calendario (solo suyas, locales)
+  const [periodicas, setPeriodicas] = useState(() => obtenerPeriodicas(cliente.id))
 
   // Indice del día actual relativo al inicio
   const hoyISO = toISO(new Date())
@@ -126,6 +133,32 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
   const idxHoy = semanas.findIndex(s =>
     s.dias.some(d => d.fecha === hoyISO)
   )
+
+  // Si el cliente tiene respiraciones periódicas, se puede seguir avanzando en el
+  // calendario más allá de las semanas reales del programa (p. ej. "TN box" ya
+  // terminó) solo para poder verlas — no se guarda nada, se genera al vuelo.
+  const puedeExtenderCalendario = tieneAccesoContenido && periodicas.length > 0
+  const semanaVirtual = (idx: number): SemanaFusion => {
+    const base = semanas.length > 0
+      ? addDays(semanas[semanas.length - 1].fechaLunes, 7 * (idx - (semanas.length - 1)))
+      : addDays(lunesDe(hoyISO), 7 * idx)
+    return {
+      fechaLunes: base,
+      dias: DIAS_SEMANA.map((_, i) => ({ fecha: addDays(base, i), diaSemana: i, bloques: [] })),
+    }
+  }
+  const obtenerSemana = (idx: number): SemanaFusion | undefined =>
+    idx < 0 ? undefined : idx < semanas.length ? semanas[idx] : (puedeExtenderCalendario ? semanaVirtual(idx) : undefined)
+
+  // Vista "Todas": nº de semanas virtuales extra añadidas al final (en bloques de 4).
+  const [semanasExtra, setSemanasExtra] = useState(0)
+  const semanasTodas = useMemo<SemanaFusion[]>(() => [
+    ...semanas,
+    ...(puedeExtenderCalendario
+      ? Array.from({ length: semanasExtra }, (_, k) => semanaVirtual(semanas.length + k))
+      : []),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [semanas, semanasExtra, puedeExtenderCalendario])
 
   // Estado para vista día: índice de día seleccionado dentro de la semana
   const [diaIdx, setDiaIdx] = useState(0)
@@ -147,6 +180,18 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
 
   // Elemento de Contenido (Respiración/Movilidad) seleccionado para ver detalle
   const [contenidoSel, setContenidoSel] = useState<ContenidoItem | null>(null)
+
+  const todosContenidos = useMemo(() => [...respiraciones, ...movilidad], [respiraciones, movilidad])
+
+  const programarContenido = (contenidoId: string) => (hora: string, dias: number[]): string | null => {
+    const res = añadirPeriodica(cliente.id, contenidoId, hora, dias)
+    if (!res.ok) return res.error
+    setPeriodicas(obtenerPeriodicas(cliente.id))
+    return null
+  }
+  const quitarPeriodica = (id: string) => {
+    setPeriodicas(eliminarPeriodica(cliente.id, id))
+  }
 
   // Menú de exportar
   const [menuExport, setMenuExport] = useState(false)
@@ -212,6 +257,37 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
     )
   }
 
+  // Respiraciones periódicas del cliente para un día de la semana (0=Lun…6=Dom).
+  // Estilo propio (cian) para distinguirlas de los bloques de los programas.
+  // Se colocan respecto al entreno según su hora: antes de las 12:00 van antes
+  // del/de los bloque(s) del día; a partir de las 12:00 van después.
+  const renderPeriodicasDia = (diaSemana: number, momento: 'antes' | 'despues') => {
+    if (!tieneAccesoContenido) return null
+    const delDia = periodicasDeDia(periodicas, diaSemana)
+      .filter(p => (momento === 'antes' ? p.hora < '12:00' : p.hora >= '12:00'))
+      .map(p => ({ p, item: todosContenidos.find(i => i.id === p.contenidoId) }))
+      .filter(x => x.item)
+    if (delDia.length === 0) return null
+    return delDia.map(({ p, item }) => (
+      <button
+        key={p.id}
+        onClick={() => setContenidoSel(item!)}
+        className="w-full text-left rounded-xl p-3 border border-sky-400/30 bg-sky-400/10 hover:border-sky-400/70 transition-all group cursor-pointer"
+      >
+        <div className="flex items-center gap-1.5 mb-1">
+          <svg className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M9.59 4.59A2 2 0 1111 8H2m10.59 11.41A2 2 0 1014 16H2m15.73-8.27A2.5 2.5 0 1119.5 12H2" />
+          </svg>
+          <span className="text-sky-300 text-xs font-mono font-bold">{p.hora}</span>
+        </div>
+        <p className="text-sky-100 font-semibold text-sm leading-tight group-hover:text-sky-300 transition-colors">
+          {item!.titulo}
+        </p>
+      </button>
+    ))
+  }
+
   const renderSemanaGrid = (semana: SemanaFusion) => (
     <div className="overflow-x-auto -mx-4 lg:mx-0 px-4 lg:px-0">
       <div className="grid grid-cols-7 gap-2 min-w-[800px]">
@@ -228,11 +304,17 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                 </p>
               </div>
               <div className="space-y-2 min-h-[60px]">
-                {dia.bloques.length === 0
+                {dia.bloques.length === 0 && periodicasDeDia(periodicas, dia.diaSemana).length === 0
                   ? <div className="border border-dashed border-tn-border/40 rounded-xl h-12 flex items-center justify-center">
                       <span className="text-tn-muted/40 text-xs">descanso</span>
                     </div>
-                  : dia.bloques.map(b => renderBloque(b, dia.fecha))}
+                  : (
+                    <>
+                      {renderPeriodicasDia(dia.diaSemana, 'antes')}
+                      {dia.bloques.map(b => renderBloque(b, dia.fecha))}
+                      {renderPeriodicasDia(dia.diaSemana, 'despues')}
+                    </>
+                  )}
               </div>
             </div>
           )
@@ -328,7 +410,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
     )
   }
 
-  const semanaActual = semanas[semanaIdx]
+  const semanaActual = obtenerSemana(semanaIdx)
 
   return (
     <div className="min-h-screen bg-tn-black flex flex-col">
@@ -347,10 +429,11 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           </div>
           <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
             <div className="text-right">
-              <p className="text-tn-yellow font-black text-2xl leading-none">{miscalendarios.length}</p>
-              <p className="text-tn-muted text-xs">programa{miscalendarios.length !== 1 ? 's' : ''} activo{miscalendarios.length !== 1 ? 's' : ''}</p>
+              <p className="text-tn-yellow font-black text-2xl leading-none">{misSuscripcionesVigentes.length}</p>
+              <p className="text-tn-muted text-xs">suscripci{misSuscripcionesVigentes.length !== 1 ? 'ones' : 'ón'} activa{misSuscripcionesVigentes.length !== 1 ? 's' : ''}</p>
             </div>
-            {/* Botón exportar */}
+            {/* Botón exportar: solo tiene sentido viendo el entrenamiento */}
+            {seccion === 'entrenamiento' && miscalendarios.length > 0 && (
             <div className="relative">
               <button
                 onClick={() => setMenuExport(v => !v)}
@@ -404,80 +487,122 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                 </>
               )}
             </div>
+            )}
           </div>
         </div>
 
-        {/* Suscripciones del cliente */}
+        {/* Mis suscripciones: una sola tarjeta con todas las vigentes */}
         {misSuscripcionesVigentes.length > 0 && (
-          <div className="space-y-2">
-            {misSuscripcionesVigentes.map(({ susc, cat }) => {
-              const esUnico = cat!.tipo === 'unico'
-              return (
-                <div key={susc.id} className="card p-4 flex items-center justify-between gap-4 flex-wrap">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${esUnico ? 'bg-green-400/10' : 'bg-tn-yellow/10'}`}>
-                      <svg className={`w-5 h-5 ${esUnico ? 'text-green-400' : 'text-tn-yellow'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-                      </svg>
+          <div className="card overflow-hidden">
+            <div className="px-4 lg:px-5 py-3 border-b border-tn-border flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-white font-bold text-sm flex items-center gap-2">
+                <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                </svg>
+                Mis suscripciones
+                <span className="text-tn-muted font-normal">({misSuscripcionesVigentes.length})</span>
+              </p>
+              <a
+                href="https://trainingnorte.com/tn-box/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-tn-muted text-xs font-semibold hover:text-tn-yellow transition-colors flex items-center gap-1"
+              >
+                Ver otras suscripciones
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                </svg>
+              </a>
+            </div>
+            <div className="divide-y divide-tn-border">
+              {misSuscripcionesVigentes.map(({ susc, cat }) => {
+                const esUnico = cat!.tipo === 'unico'
+                return (
+                  <div key={susc.id} className="px-4 lg:px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${esUnico ? 'bg-green-400' : 'bg-tn-yellow'}`} />
+                      <div className="min-w-0">
+                        <p className="text-white font-bold text-sm truncate">{cat!.nombre}</p>
+                        <p className="text-tn-muted text-xs">
+                          {esUnico
+                            ? `Acceso permanente${cat!.precioMensual ? ` · ${cat!.precioMensual} €` : ''}`
+                            : `Activa hasta ${fmtFecha(susc.fechaFin)}${cat!.precioMensual ? ` · ${cat!.precioMensual} €/mes` : ''}`}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-white font-bold text-sm truncate">{cat!.nombre}</p>
-                      <p className="text-tn-muted text-xs">
-                        {esUnico
-                          ? `Acceso permanente${cat!.precioMensual ? ` · ${cat!.precioMensual} €` : ''}`
-                          : `Activa hasta ${fmtFecha(susc.fechaFin)}${cat!.precioMensual ? ` · ${cat!.precioMensual} €/mes` : ''}`}
-                      </p>
-                    </div>
-                  </div>
-                  {esUnico ? (
-                    <a
-                      href="https://trainingnorte.com/atletas/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-secondary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                      </svg>
-                      Ver programas para atletas
-                    </a>
-                  ) : (
-                    <div className="flex items-center gap-2 flex-wrap">
+                    {esUnico ? (
                       <a
-                        href="https://trainingnorte.com/tn-box/"
+                        href="https://trainingnorte.com/atletas/"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="btn-secondary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
+                        className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                        </svg>
-                        Ver otras suscripciones
+                        Ver programas para atletas
                       </a>
+                    ) : (
                       <button
                         type="button"
                         onClick={() => setRenovar({ catalogoId: cat!.id, nombre: cat!.nombre, precio: cat!.precioMensual, mode: 'renew' })}
-                        className="btn-primary flex items-center gap-2 text-sm py-2 px-4 whitespace-nowrap"
+                        className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3 whitespace-nowrap"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
-                        Renovar ahora{cat!.precioMensual ? ` por ${cat!.precioMensual} €` : ''}
+                        Renovar{cat!.precioMensual ? ` · ${cat!.precioMensual} €` : ''}
                       </button>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
 
+        {/* Navegación principal: Entrenamiento / Contenido */}
+        {miscalendarios.length > 0 && tieneAccesoContenido && (
+          <nav className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
+            {([
+              {
+                id: 'entrenamiento' as Seccion,
+                label: 'Entrenamiento',
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                ),
+              },
+              {
+                id: 'contenido' as Seccion,
+                label: 'Contenido',
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M9.59 4.59A2 2 0 1111 8H2m10.59 11.41A2 2 0 1014 16H2m15.73-8.27A2.5 2.5 0 1119.5 12H2" />
+                  </svg>
+                ),
+              },
+            ]).map(s => (
+              <button
+                key={s.id}
+                onClick={() => setSeccion(s.id)}
+                className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold border transition-all ${
+                  seccion === s.id
+                    ? 'bg-tn-yellow text-tn-black border-tn-yellow'
+                    : 'bg-tn-card text-tn-muted border-tn-border hover:text-white hover:border-tn-muted'
+                }`}
+              >
+                {s.icon}
+                {s.label}
+              </button>
+            ))}
+          </nav>
+        )}
+
         {/* Selector de programas */}
-        {miscalendarios.length > 1 && (
+        {seccion === 'entrenamiento' && miscalendarios.length > 1 && (
           <div className="space-y-2">
             <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider">Programas</p>
             <div className="flex flex-wrap gap-2">
@@ -508,7 +633,7 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
         )}
 
         {/* PDFs adjuntos de los programas seleccionados */}
-        {(() => {
+        {seccion === 'entrenamiento' && (() => {
           const pdfs = calsActivos.flatMap(cal =>
             (cal.adjuntos ?? []).map(a => ({ ...a, programa: cal.programaNombre, colorKey: cal.colorKey }))
           )
@@ -560,7 +685,9 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           )
         })()}
 
-        {/* Selector vista (Semana/Todas solo en escritorio; Contenido si hay acceso "Basic") */}
+        {/* Selector vista (Semana/Todas solo en escritorio) */}
+        {seccion === 'entrenamiento' && (
+        <>
         <div className="flex gap-1 bg-tn-dark border border-tn-border rounded-xl p-1 w-fit flex-wrap">
           {([
             { id: 'dia' as Vista,    label: 'Día'    },
@@ -568,7 +695,6 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
               { id: 'semana' as Vista, label: 'Semana' },
               { id: 'todas' as Vista,  label: 'Todas'  },
             ] : []),
-            ...(tieneAccesoContenido ? [{ id: 'contenido' as Vista, label: 'Contenido' }] : []),
           ]).map(t => (
             <button
               key={t.id}
@@ -592,8 +718,8 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           ))}
         </div>
 
-        {/* Aviso solo en móvil: la vista semanal es de escritorio (no aplica en Contenido) */}
-        {!esEscritorio && vista !== 'contenido' && (
+        {/* Aviso solo en móvil: la vista semanal es de escritorio */}
+        {!esEscritorio && (
           <p className="text-tn-muted text-xs flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -641,9 +767,9 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
               <button
                 onClick={() => {
                   if (diaIdx < 6) setDiaIdx(diaIdx + 1)
-                  else if (semanaIdx < semanas.length - 1) { setSemanaIdx(semanaIdx + 1); setDiaIdx(0) }
+                  else if (semanaIdx < semanas.length - 1 || puedeExtenderCalendario) { setSemanaIdx(semanaIdx + 1); setDiaIdx(0) }
                 }}
-                disabled={diaIdx === 6 && semanaIdx === semanas.length - 1}
+                disabled={diaIdx === 6 && semanaIdx === semanas.length - 1 && !puedeExtenderCalendario}
                 className="p-3 text-tn-muted hover:text-tn-yellow disabled:opacity-30 transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -652,10 +778,11 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
               </button>
             </div>
 
-            {/* Bloques del día */}
+            {/* Bloques del día (+ respiraciones periódicas del cliente) */}
             {semanaActual.dias[diaIdx] && (
               <div className="space-y-3 max-w-2xl mx-auto">
-                {semanaActual.dias[diaIdx].bloques.length === 0 ? (
+                {semanaActual.dias[diaIdx].bloques.length === 0
+                  && periodicasDeDia(periodicas, semanaActual.dias[diaIdx].diaSemana).length === 0 ? (
                   <div className="card py-12 text-center">
                     <div className="w-14 h-14 bg-tn-border rounded-2xl flex items-center justify-center mb-3 mx-auto">
                       <svg className="w-7 h-7 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -666,9 +793,13 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                     <p className="text-tn-muted text-sm">Aprovecha para recuperar bien</p>
                   </div>
                 ) : (
-                  semanaActual.dias[diaIdx].bloques.map(b =>
-                    <div key={b.id + b.calId}>{renderBloque(b, semanaActual.dias[diaIdx].fecha)}</div>
-                  )
+                  <>
+                    {renderPeriodicasDia(semanaActual.dias[diaIdx].diaSemana, 'antes')}
+                    {semanaActual.dias[diaIdx].bloques.map(b =>
+                      <div key={b.id + b.calId}>{renderBloque(b, semanaActual.dias[diaIdx].fecha)}</div>
+                    )}
+                    {renderPeriodicasDia(semanaActual.dias[diaIdx].diaSemana, 'despues')}
+                  </>
                 )}
               </div>
             )}
@@ -676,61 +807,125 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
         )}
 
         {/* Vista SEMANA */}
-        {vistaEfectiva === 'semana' && (
+        {vistaEfectiva === 'semana' && semanaActual && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 flex-wrap">
-              {semanas.map((s, i) => (
-                <button
-                  key={s.fechaLunes}
-                  onClick={() => setSemanaIdx(i)}
-                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                    semanaIdx === i ? 'bg-tn-yellow text-tn-black' : 'text-tn-muted hover:text-white hover:bg-tn-card border border-tn-border'
-                  }`}
-                >
-                  <span>Semana {i + 1}</span>
-                  <span className="hidden sm:inline text-xs ml-2 opacity-70">{fmtFecha(s.fechaLunes)}</span>
-                </button>
-              ))}
+            {/* Navegación semana a semana (permite avanzar más allá del programa si hay periódicas) */}
+            <div className="flex items-center justify-between gap-3">
+              <button
+                onClick={() => { if (semanaIdx > 0) setSemanaIdx(semanaIdx - 1) }}
+                disabled={semanaIdx === 0}
+                className="p-3 text-tn-muted hover:text-tn-yellow disabled:opacity-30 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div className="flex-1 text-center">
+                <p className="text-tn-muted text-xs uppercase tracking-wider">Semana {semanaIdx + 1}</p>
+                <h2 className="text-white font-black text-lg mt-0.5">
+                  {fmtFecha(semanaActual.fechaLunes)} → {fmtFecha(addDays(semanaActual.fechaLunes, 6))}
+                </h2>
+              </div>
+              <button
+                onClick={() => {
+                  if (semanaIdx < semanas.length - 1 || puedeExtenderCalendario) setSemanaIdx(semanaIdx + 1)
+                }}
+                disabled={semanaIdx === semanas.length - 1 && !puedeExtenderCalendario}
+                className="p-3 text-tn-muted hover:text-tn-yellow disabled:opacity-30 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
             </div>
-            {semanaActual && renderSemanaGrid(semanaActual)}
+            {/* Accesos rápidos a las semanas reales del programa */}
+            {semanas.length > 1 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 flex-wrap">
+                {semanas.map((s, i) => (
+                  <button
+                    key={s.fechaLunes}
+                    onClick={() => setSemanaIdx(i)}
+                    className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      semanaIdx === i ? 'bg-tn-yellow text-tn-black' : 'text-tn-muted hover:text-white hover:bg-tn-card border border-tn-border'
+                    }`}
+                  >
+                    <span>Semana {i + 1}</span>
+                    <span className="hidden sm:inline text-xs ml-2 opacity-70">{fmtFecha(s.fechaLunes)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {renderSemanaGrid(semanaActual)}
           </div>
         )}
 
         {/* Vista TODAS */}
         {vistaEfectiva === 'todas' && (
           <div className="space-y-8">
-            {semanas.map((s, i) => (
-              <div key={s.fechaLunes} className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-white font-bold whitespace-nowrap">Semana {i + 1}</h3>
-                  <span className="text-tn-muted text-xs">
-                    {fmtFecha(s.fechaLunes)} → {fmtFecha(addDays(s.fechaLunes, 6))}
-                  </span>
-                  <div className="flex-1 h-px bg-tn-border" />
-                  <span className="text-tn-muted text-xs whitespace-nowrap">
-                    {s.dias.reduce((a, d) => a + d.bloques.length, 0)} bloques
-                  </span>
+            {semanasTodas.map((s, i) => {
+              const esVirtual = i >= semanas.length
+              return (
+                <div key={s.fechaLunes} className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-white font-bold whitespace-nowrap">Semana {i + 1}</h3>
+                    <span className="text-tn-muted text-xs">
+                      {fmtFecha(s.fechaLunes)} → {fmtFecha(addDays(s.fechaLunes, 6))}
+                    </span>
+                    <div className="flex-1 h-px bg-tn-border" />
+                    <span className="text-tn-muted text-xs whitespace-nowrap">
+                      {esVirtual ? 'solo respiraciones' : `${s.dias.reduce((a, d) => a + d.bloques.length, 0)} bloques`}
+                    </span>
+                  </div>
+                  {renderSemanaGrid(s)}
                 </div>
-                {renderSemanaGrid(s)}
+              )
+            })}
+            {/* Cargar / ocultar 4 semanas más (solo si hay respiraciones periódicas que mostrar) */}
+            {puedeExtenderCalendario && (
+              <div className="flex items-center justify-center gap-3 pt-2">
+                {semanasExtra > 0 && (
+                  <button
+                    onClick={() => setSemanasExtra(n => Math.max(0, n - 4))}
+                    className="btn-secondary flex items-center gap-2 text-sm py-2 px-4"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                    </svg>
+                    Mostrar menos
+                  </button>
+                )}
+                <button
+                  onClick={() => setSemanasExtra(n => n + 4)}
+                  className="btn-secondary flex items-center gap-2 text-sm py-2 px-4"
+                >
+                  Ver 4 semanas más
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
               </div>
-            ))}
+            )}
           </div>
         )}
 
-        {/* Vista CONTENIDO (Respiración / Movilidad, acceso vía "Basic") */}
-        {vistaEfectiva === 'contenido' && (
+        {seleccionados.size === 0 && (
+          <div className="card py-10 text-center">
+            <p className="text-tn-muted text-sm">Selecciona al menos un programa para ver tu entrenamiento</p>
+          </div>
+        )}
+        </>
+        )}
+
+        {/* Sección CONTENIDO (Respiración / Movilidad, acceso vía "Basic") */}
+        {seccion === 'contenido' && (
           <ContenidoSeccion
             clienteId={cliente.id}
             respiraciones={respiraciones}
             movilidad={movilidad}
             onAbrir={item => setContenidoSel(item)}
+            periodicas={periodicas}
+            onEliminarPeriodica={quitarPeriodica}
           />
-        )}
-
-        {vistaEfectiva !== 'contenido' && seleccionados.size === 0 && (
-          <div className="card py-10 text-center">
-            <p className="text-tn-muted text-sm">Selecciona al menos un programa para ver tu entrenamiento</p>
-          </div>
         )}
 
         {/* Suscripciones caducadas (histórico) */}
@@ -801,7 +996,11 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
       )}
 
       {contenidoSel && (
-        <ContenidoDetalleModal item={contenidoSel} onClose={() => setContenidoSel(null)} />
+        <ContenidoDetalleModal
+          item={contenidoSel}
+          onClose={() => setContenidoSel(null)}
+          onProgramar={tieneAccesoContenido ? programarContenido(contenidoSel.id) : undefined}
+        />
       )}
 
       {renovar && (

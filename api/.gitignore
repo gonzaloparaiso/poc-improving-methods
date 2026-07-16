@@ -1,0 +1,5 @@
+# Base de datos SQLite local (datos de prueba, no se versiona)
+data.db
+data.db-shm
+data.db-wal
+node_modules

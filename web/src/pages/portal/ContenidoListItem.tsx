@@ -1,8 +1,22 @@
 import { type ContenidoItem } from '../../types'
 
-export default function ContenidoListItem({ item, onAbrir }: { item: ContenidoItem; onAbrir: () => void }) {
+interface Props {
+  item: ContenidoItem
+  onAbrir: () => void
+  favorito: boolean
+  onToggleFavorito: () => void
+}
+
+export default function ContenidoListItem({ item, onAbrir, favorito, onToggleFavorito }: Props) {
   return (
-    <button onClick={onAbrir} className="w-full flex items-center gap-3 card p-3 text-left group hover:border-tn-yellow/50 transition-all">
+    // No es <button> a propósito: contiene el botón de favorito, y HTML no permite <button> anidados.
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onAbrir}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAbrir() } }}
+      className="w-full flex items-center gap-3 card p-3 text-left group hover:border-tn-yellow/50 transition-all cursor-pointer"
+    >
       <div className="w-14 h-14 rounded-lg bg-tn-dark flex-shrink-0 overflow-hidden">
         {item.thumbnail ? (
           <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
@@ -37,9 +51,20 @@ export default function ContenidoListItem({ item, onAbrir }: { item: ContenidoIt
           </div>
         )}
       </div>
+      <button
+        onClick={e => { e.stopPropagation(); onToggleFavorito() }}
+        title={favorito ? 'Quitar de favoritas' : 'Añadir a favoritas'}
+        className="p-1.5 flex-shrink-0"
+      >
+        <svg className={`w-5 h-5 transition-colors ${favorito ? 'text-tn-yellow' : 'text-tn-muted'}`}
+          fill={favorito ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={favorito ? 0 : 2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round"
+            d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+        </svg>
+      </button>
       <svg className="w-4 h-4 text-tn-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
       </svg>
-    </button>
+    </div>
   )
 }
