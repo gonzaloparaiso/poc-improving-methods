@@ -1,6 +1,8 @@
 import { useState, type FormEvent, useEffect } from 'react'
 import { ROLES, type Usuario, type Rol } from '../types'
 import { useUsers } from '../context/UsersContext'
+import PasswordRequisitos from './PasswordRequisitos'
+import { errorPassword } from '../lib/passwordPolicy'
 
 interface Props {
   user?: Usuario | null
@@ -63,10 +65,11 @@ export default function UserModal({ user, onClose }: Props) {
     if (usernameTaken) return setError('Ese nombre de usuario ya existe')
 
     if (!isEdit && !form.password) return setError('La contraseña es obligatoria')
-    if (form.password && form.password !== form.passwordConfirm)
-      return setError('Las contraseñas no coinciden')
-    if (form.password && form.password.length < 4)
-      return setError('La contraseña debe tener al menos 4 caracteres')
+    if (form.password) {
+      const err = errorPassword(form.password)
+      if (err) return setError(err)
+      if (form.password !== form.passwordConfirm) return setError('Las contraseñas no coinciden')
+    }
 
     const datos = {
       nombre:   form.nombre.trim(),
@@ -226,6 +229,8 @@ export default function UserModal({ user, onClose }: Props) {
                 />
               </div>
             </div>
+
+            {form.password && <PasswordRequisitos password={form.password} />}
 
             {isEdit && (
               <p className="text-tn-muted text-xs mt-2">

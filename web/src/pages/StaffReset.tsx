@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { apiStaffResetPassword } from '../lib/storage'
 import PasswordInput from '../components/PasswordInput'
+import PasswordRequisitos from '../components/PasswordRequisitos'
+import { errorPassword } from '../lib/passwordPolicy'
 
 export default function StaffReset() {
   const token = new URLSearchParams(window.location.search).get('token') || ''
@@ -13,7 +15,8 @@ export default function StaffReset() {
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
-    if (nueva.length < 4) return setError('La contraseña debe tener al menos 4 caracteres')
+    const err = errorPassword(nueva)
+    if (err) return setError(err)
     if (nueva !== confirmar) return setError('Las contraseñas no coinciden')
     setLoading(true)
     try {
@@ -59,6 +62,7 @@ export default function StaffReset() {
                 <label className="label">Nueva contraseña</label>
                 <PasswordInput placeholder="••••••••"
                   value={nueva} onChange={e => setNueva(e.target.value)} autoComplete="new-password" autoFocus required />
+                <PasswordRequisitos password={nueva} />
               </div>
               <div>
                 <label className="label">Repetir contraseña</label>

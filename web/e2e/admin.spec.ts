@@ -35,8 +35,8 @@ test('el admin crea un usuario desde el panel y aparece en la lista', async ({ p
   await page.getByPlaceholder('correo@ejemplo.com').fill('laura@test.com')
   await page.getByPlaceholder('nombre_usuario').fill('laura')
   const pwds = page.locator('input[type="password"]')
-  await pwds.nth(0).fill('laura1234')
-  await pwds.nth(1).fill('laura1234')
+  await pwds.nth(0).fill('Laura1234!')
+  await pwds.nth(1).fill('Laura1234!')
   await page.getByRole('button', { name: /Crear usuario/i }).click()
   // Tras crearse (POST /api/users + refresh), aparece en la tabla
   await expect(page.getByText('@laura')).toBeVisible()

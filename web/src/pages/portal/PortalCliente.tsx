@@ -12,6 +12,8 @@ import ContenidoDetalleModal from './ContenidoDetalleModal'
 import { exportarPDF, exportarExcel } from './exporters'
 import { apiPortalChangePassword, apiPortalRenew } from '../../lib/storage'
 import PasswordInput from '../../components/PasswordInput'
+import PasswordRequisitos from '../../components/PasswordRequisitos'
+import { errorPassword } from '../../lib/passwordPolicy'
 
 interface Props {
   cliente: Cliente
@@ -1091,7 +1093,8 @@ function CambiarPasswordModal({ onClose }: { onClose: () => void }) {
     e.preventDefault()
     setError('')
     if (!actual) return setError('Introduce tu contraseña actual')
-    if (nueva.length < 4) return setError('La nueva contraseña debe tener al menos 4 caracteres')
+    const err = errorPassword(nueva)
+    if (err) return setError(err)
     if (nueva !== confirmar) return setError('Las contraseñas nuevas no coinciden')
     setSaving(true)
     try {
@@ -1135,6 +1138,7 @@ function CambiarPasswordModal({ onClose }: { onClose: () => void }) {
               <label className="label">Nueva contraseña</label>
               <PasswordInput value={nueva}
                 onChange={e => setNueva(e.target.value)} autoComplete="new-password" />
+              <PasswordRequisitos password={nueva} />
             </div>
             <div>
               <label className="label">Repetir nueva contraseña</label>

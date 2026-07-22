@@ -101,14 +101,14 @@ test('KV: clave no permitida → 400', async () => {
 test('KV: PUT de im_clientes sin contraseña preserva el hash existente', async () => {
   const token = await adminToken()
   // Crear cliente (tiene contraseña hasheada en el servidor)
-  await api('POST', '/clients', { token, body: { nombre: 'Ana', email: 'ana@test.com', username: 'ana', password: 'ana12345' } })
+  await api('POST', '/clients', { token, body: { nombre: 'Ana', email: 'ana@test.com', username: 'ana', password: 'Ana12345!' } })
   // Releer (sin contraseñas) y volver a guardar tal cual (sin contraseñas)
   const got = await api('GET', '/data/im_clientes', { token })
   assert.ok(got.data.every(c => c.password === undefined), 'GET no debe exponer contraseñas')
   const put = await api('PUT', '/data/im_clientes', { token, body: got.data })
   assert.equal(put.status, 200)
   // El login del portal sigue funcionando → el hash se preservó
-  const login = await api('POST', '/portal/login', { body: { identificador: 'ana@test.com', password: 'ana12345' } })
+  const login = await api('POST', '/portal/login', { body: { identificador: 'ana@test.com', password: 'Ana12345!' } })
   assert.equal(login.status, 200)
 })
 
@@ -123,8 +123,8 @@ test('crear producto: válido → 201; programa inexistente → 400; no-admin �
   assert.equal(bad.status, 400)
 
   // crear un coach y comprobar que NO puede crear productos
-  await api('POST', '/users', { token, body: { nombre: 'Coach', email: 'co@t.com', username: 'co', password: 'co123456', rol: 'coach' } })
-  const coach = await api('POST', '/login', { body: { username: 'co', password: 'co123456' } })
+  await api('POST', '/users', { token, body: { nombre: 'Coach', email: 'co@t.com', username: 'co', password: 'Coach123!', rol: 'coach' } })
+  const coach = await api('POST', '/login', { body: { username: 'co', password: 'Coach123!' } })
   const denied = await api('POST', '/products', { token: coach.data.token, body: { nombre: 'X', tipo: 'recurrente', programas: [] } })
   assert.equal(denied.status, 403)
 })
@@ -150,7 +150,7 @@ test('crear producto con "Basic" (pseudo-programa reservado): no necesita existi
 // ── Crear cliente ────────────────────────────────────────────────────────────
 test('crear cliente: 201, sin contraseña en la respuesta y con suscripción "Test" automática', async () => {
   const token = await adminToken()
-  const r = await api('POST', '/clients', { token, body: { nombre: 'Bea', email: 'bea@test.com', username: 'bea', password: 'bea12345' } })
+  const r = await api('POST', '/clients', { token, body: { nombre: 'Bea', email: 'bea@test.com', username: 'bea', password: 'Bea12345!' } })
   assert.equal(r.status, 201)
   assert.equal(r.data.password, undefined)
   assert.equal(r.data.email, 'bea@test.com')
@@ -165,7 +165,7 @@ test('crear cliente: 201, sin contraseña en la respuesta y con suscripción "Te
 test('asignar producto a cliente crea suscripción y genera calendario', async () => {
   const token = await adminToken()
   const prod = await api('POST', '/products', { token, body: { nombre: 'Plan WOD', tipo: 'recurrente', precioMensual: 40, primerMesPrueba: false, programas: [{ programaId: 'prog1', fechaInicio: null }] } })
-  const cli = await api('POST', '/clients', { token, body: { nombre: 'CaT', email: 'cat@test.com', username: 'cat', password: 'cat12345' } })
+  const cli = await api('POST', '/clients', { token, body: { nombre: 'CaT', email: 'cat@test.com', username: 'cat', password: 'Cat12345!' } })
   const assign = await api('POST', `/clients/${cli.data.id}/subscriptions`, { token, body: { catalogoId: prod.data.id } })
   assert.equal(assign.status, 201)
   // Debe haberse generado al menos un calendario para ese cliente con ese programa
@@ -226,7 +226,7 @@ test('webhook WC: email desconocido → 200 ignorado', async () => {
 test('webhook WC: suscripción activa actualiza fechaFin/activa del cliente', async () => {
   const token = await adminToken()
   const prod = await api('POST', '/products', { token, body: { nombre: 'Plan Sync', tipo: 'recurrente', programas: [{ programaId: 'prog1' }], wcProductId: 55555 } })
-  await api('POST', '/clients', { token, body: { nombre: 'Web', email: 'webhook@test.com', username: 'webh', password: 'web12345' } })
+  await api('POST', '/clients', { token, body: { nombre: 'Web', email: 'webhook@test.com', username: 'webh', password: 'Web12345!' } })
   const r = await postWebhook({
     id: 9001, status: 'active', billing: { email: 'webhook@test.com' },
     line_items: [{ product_id: 55555 }], next_payment_date_gmt: '2030-01-15 00:00:00',
@@ -245,7 +245,7 @@ test('webhook WC: suscripción activa actualiza fechaFin/activa del cliente', as
 test('webhook WC: suscripción cancelada desactiva el acceso', async () => {
   const token = await adminToken()
   await api('POST', '/products', { token, body: { nombre: 'Plan Cancel', tipo: 'recurrente', programas: [{ programaId: 'prog1' }], wcProductId: 55556 } })
-  await api('POST', '/clients', { token, body: { nombre: 'WebC', email: 'webhookc@test.com', username: 'webhc', password: 'web12345' } })
+  await api('POST', '/clients', { token, body: { nombre: 'WebC', email: 'webhookc@test.com', username: 'webhc', password: 'Web12345!' } })
   // primero activa
   await postWebhook({ id: 9002, status: 'active', billing: { email: 'webhookc@test.com' }, line_items: [{ product_id: 55556 }], next_payment_date_gmt: '2030-01-01 00:00:00' })
   // luego cancelada
@@ -260,8 +260,8 @@ test('renovar: staff → 403; producto sin wcProductId → 400; producto inexist
   const token = await adminToken()
   // producto SIN wcProductId
   const prod = await api('POST', '/products', { token, body: { nombre: 'Sin WC', tipo: 'recurrente', programas: [{ programaId: 'prog1' }] } })
-  const cli = await api('POST', '/clients', { token, body: { nombre: 'Ren', email: 'ren@test.com', username: 'ren', password: 'ren12345' } })
-  const portal = await api('POST', '/portal/login', { body: { identificador: 'ren@test.com', password: 'ren12345' } })
+  const cli = await api('POST', '/clients', { token, body: { nombre: 'Ren', email: 'ren@test.com', username: 'ren', password: 'Ren12345!' } })
+  const portal = await api('POST', '/portal/login', { body: { identificador: 'ren@test.com', password: 'Ren12345!' } })
 
   // staff no puede renovar (es endpoint de cliente)
   const staff = await api('POST', '/portal/renew', { token, body: { catalogoId: prod.data.id } })

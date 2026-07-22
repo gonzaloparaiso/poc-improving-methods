@@ -106,6 +106,25 @@ function verifyPassword(plain, stored) {
 const sinPassword = (o) => { if (!o) return o; const { password, ...rest } = o; return rest }
 const sinPasswords = (arr) => Array.isArray(arr) ? arr.map(sinPassword) : arr
 
+// ── Política de contraseñas ──────────────────────────────────────────────────
+// OJO: debe coincidir exactamente con REQUISITOS_PASSWORD en web/src/lib/passwordPolicy.ts
+// (fuente de verdad: esto; el frontend solo repite la regla para dar feedback al vuelo).
+function erroresPassword(pw) {
+  const s = String(pw || '')
+  const errores = []
+  if (s.length < 8) errores.push('al menos 8 caracteres')
+  if (!/[A-Z]/.test(s)) errores.push('una letra mayúscula')
+  if (!/[a-z]/.test(s)) errores.push('una letra minúscula')
+  if (!/[0-9]/.test(s)) errores.push('un número')
+  if (!/[^A-Za-z0-9]/.test(s)) errores.push('un carácter especial')
+  return errores
+}
+/** Lanza 400 con el detalle de lo que falta si la contraseña no cumple la política. */
+function validarPasswordFuerte(pw) {
+  const errores = erroresPassword(pw)
+  if (errores.length) throw httpErr(400, `La contraseña debe tener ${errores.join(', ')}`)
+}
+
 /** Para PUT de im_users/im_clientes: hashea contraseñas nuevas y preserva las existentes
  *  cuando vienen vacías (el frontend nunca recibe la contraseña, así que no la reenvía). */
 function preservarPasswords(key, incoming) {
@@ -113,7 +132,7 @@ function preservarPasswords(key, incoming) {
   const existentes = Object.fromEntries(getCollection(key).map(r => [r.id, r.password]))
   return incoming.map(r => {
     if (!r) return r
-    if (r.password && !isHashed(r.password)) return { ...r, password: hashPassword(r.password) }
+    if (r.password && !isHashed(r.password)) { validarPasswordFuerte(r.password); return { ...r, password: hashPassword(r.password) } }
     if (!r.password) { const prev = existentes[r.id]; return prev ? { ...r, password: prev } : r }
     return r
   })
@@ -198,6 +217,34 @@ async function gmailAccessToken() {
   return data.access_token
 }
 
+// Plantilla común del email de "restablecer contraseña" (portal cliente y panel staff).
+function emailResetHtml({ nombre, link, logoUrl }) {
+  return `
+<div style="background:#f4f4f5;padding:32px 16px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:16px;padding:36px 32px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+    <div style="text-align:center;margin-bottom:20px">
+      <img src="${logoUrl}" alt="Training Norte" width="72" height="72" style="border-radius:50%;display:inline-block" />
+    </div>
+    <h2 style="color:#111111;margin:0 0 6px;font-size:20px;text-align:center">Restablecer tu contraseña</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:13px;text-align:center;text-transform:uppercase;letter-spacing:0.05em;font-weight:600">Training Norte</p>
+    <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px">
+      Hola${nombre ? ' ' + nombre : ''}, hemos recibido una solicitud para restablecer la contraseña de tu acceso a la <strong>aplicación de Training Norte</strong>.
+    </p>
+    <div style="text-align:center;margin:0 0 24px">
+      <a href="${link}" style="display:inline-block;background:#f5c300;color:#111111;font-weight:bold;padding:14px 28px;border-radius:10px;text-decoration:none;font-size:15px">Crear nueva contraseña</a>
+    </div>
+    <p style="color:#6b7280;font-size:13px;line-height:1.5;margin:0 0 20px">
+      El enlace caduca en 1 hora. Si no has sido tú quien lo ha solicitado, puedes ignorar este correo con total tranquilidad.
+    </p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px" />
+    <p style="color:#6b7280;font-size:13px;line-height:1.5;margin:0 0 8px">
+      ¿Tienes algún problema? Escríbenos a <a href="mailto:soporte@academiatn.com" style="color:#111111;font-weight:600">soporte@academiatn.com</a> y te ayudamos encantados.
+    </p>
+    <p style="color:#9ca3af;font-size:12px;word-break:break-all;margin:16px 0 0">${link}</p>
+  </div>
+</div>`
+}
+
 async function sendMail({ to, subject, html }) {
   if (!emailConfigured()) throw new Error('Email (Gmail API) no configurado')
   const token = await gmailAccessToken()
@@ -255,6 +302,7 @@ const domain = {
     if (!b.nombre || !String(b.nombre).trim()) throw httpErr(400, 'El nombre es obligatorio')
     if (!b.username || !String(b.username).trim()) throw httpErr(400, 'El usuario es obligatorio')
     if (!b.password) throw httpErr(400, 'La contraseña es obligatoria')
+    validarPasswordFuerte(b.password)
     const rol = b.rol || 'coach'
     if (!ROLES.includes(rol)) throw httpErr(400, `Rol inválido (${ROLES.join(', ')})`)
     const users = getCollection('im_users')
@@ -286,6 +334,7 @@ const domain = {
     if (!b.email || !String(b.email).trim()) throw httpErr(400, 'El email es obligatorio')
     if (!b.username || !String(b.username).trim()) throw httpErr(400, 'El usuario es obligatorio')
     if (!b.password) throw httpErr(400, 'La contraseña es obligatoria')
+    validarPasswordFuerte(b.password)
     const clientes = getCollection('im_clientes')
     if (clientes.some(c => c.email === String(b.email).trim())) throw httpErr(409, 'Ese email ya está registrado')
     if (clientes.some(c => c.username === String(b.username).trim())) throw httpErr(409, 'Ese usuario ya existe')
@@ -440,13 +489,7 @@ const server = http.createServer(async (req, res) => {
         db.prepare(`INSERT INTO _password_resets (token, cliente_id, expira, tipo) VALUES (?,?,?,'cliente')`).run(rtoken, c.id, Date.now() + PASSWORD_RESET_TTL)
         const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
         const link = `${base}/reset?token=${rtoken}`
-        const html =
-          `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto">` +
-          `<h2 style="color:#111">Restablecer tu contraseña</h2>` +
-          `<p>Hola ${c.nombre || ''}, hemos recibido una solicitud para restablecer la contraseña de tu acceso a Training Norte.</p>` +
-          `<p><a href="${link}" style="display:inline-block;background:#f5c300;color:#111;font-weight:bold;padding:12px 20px;border-radius:8px;text-decoration:none">Crear nueva contraseña</a></p>` +
-          `<p style="color:#666;font-size:13px">El enlace caduca en 1 hora. Si no has sido tú, ignora este correo.</p>` +
-          `<p style="color:#999;font-size:12px">${link}</p></div>`
+        const html = emailResetHtml({ nombre: c.nombre, link, logoUrl: `${base}/tn-logo.png` })
         sendMail({ to: c.email, subject: 'Restablecer tu contraseña · Training Norte', html })
           .catch(err => console.warn('[email] no se pudo enviar el reset:', err.message))
         if (!emailConfigured()) console.log('[email] Gmail API sin configurar. Enlace de reset:', link)
@@ -458,7 +501,7 @@ const server = http.createServer(async (req, res) => {
       const b = await readBody(req)
       const rtoken = String(b.token || '')
       const nueva = String(b.nueva || '')
-      if (nueva.length < 4) throw httpErr(400, 'La contraseña debe tener al menos 4 caracteres')
+      validarPasswordFuerte(nueva)
       const row = db.prepare(`SELECT * FROM _password_resets WHERE token = ? AND tipo = 'cliente'`).get(rtoken)
       if (!row || row.expira < Date.now()) {
         if (row) db.prepare(`DELETE FROM _password_resets WHERE token = ?`).run(rtoken)
@@ -484,13 +527,7 @@ const server = http.createServer(async (req, res) => {
         db.prepare(`INSERT INTO _password_resets (token, cliente_id, expira, tipo) VALUES (?,?,?,'staff')`).run(rtoken, u.id, Date.now() + PASSWORD_RESET_TTL)
         const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
         const link = `${base}/admin/reset?token=${rtoken}`
-        const html =
-          `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto">` +
-          `<h2 style="color:#111">Restablecer tu contraseña</h2>` +
-          `<p>Hola ${u.nombre || ''}, hemos recibido una solicitud para restablecer la contraseña de tu acceso al panel de Training Norte.</p>` +
-          `<p><a href="${link}" style="display:inline-block;background:#f5c300;color:#111;font-weight:bold;padding:12px 20px;border-radius:8px;text-decoration:none">Crear nueva contraseña</a></p>` +
-          `<p style="color:#666;font-size:13px">El enlace caduca en 1 hora. Si no has sido tú, ignora este correo.</p>` +
-          `<p style="color:#999;font-size:12px">${link}</p></div>`
+        const html = emailResetHtml({ nombre: u.nombre, link, logoUrl: `${base}/tn-logo.png` })
         sendMail({ to: u.email, subject: 'Restablecer tu contraseña · Training Norte', html })
           .catch(err => console.warn('[email] no se pudo enviar el reset:', err.message))
         if (!emailConfigured()) console.log('[email] Gmail API sin configurar. Enlace de reset (staff):', link)
@@ -502,7 +539,7 @@ const server = http.createServer(async (req, res) => {
       const b = await readBody(req)
       const rtoken = String(b.token || '')
       const nueva = String(b.nueva || '')
-      if (nueva.length < 4) throw httpErr(400, 'La contraseña debe tener al menos 4 caracteres')
+      validarPasswordFuerte(nueva)
       const row = db.prepare(`SELECT * FROM _password_resets WHERE token = ? AND tipo = 'staff'`).get(rtoken)
       if (!row || row.expira < Date.now()) {
         if (row) db.prepare(`DELETE FROM _password_resets WHERE token = ?`).run(rtoken)
@@ -549,7 +586,7 @@ const server = http.createServer(async (req, res) => {
       const b = await readBody(req)
       const actual = String(b.actual || '')
       const nueva = String(b.nueva || '')
-      if (nueva.length < 4) throw httpErr(400, 'La nueva contraseña debe tener al menos 4 caracteres')
+      validarPasswordFuerte(nueva)
       const arr = getCollection('im_clientes')
       const idx = arr.findIndex(c => c.id === ses.sujeto_id)
       if (idx < 0) throw httpErr(404, 'Cliente no encontrado')

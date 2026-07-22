@@ -1,6 +1,8 @@
 import { useState, useEffect, type FormEvent } from 'react'
 import { type Cliente } from '../../types'
 import { useClientes } from '../../context/ClientesContext'
+import PasswordRequisitos from '../PasswordRequisitos'
+import { errorPassword } from '../../lib/passwordPolicy'
 
 interface Props {
   cliente?: Cliente | null
@@ -50,10 +52,11 @@ export default function ClienteModal({ cliente, onClose }: Props) {
     if (userTaken) return setError('Ese nombre de usuario ya existe')
 
     if (!isEdit && !form.password) return setError('La contraseña es obligatoria')
-    if (form.password && form.password !== form.passwordConfirm)
-      return setError('Las contraseñas no coinciden')
-    if (form.password && form.password.length < 4)
-      return setError('La contraseña debe tener al menos 4 caracteres')
+    if (form.password) {
+      const err = errorPassword(form.password)
+      if (err) return setError(err)
+      if (form.password !== form.passwordConfirm) return setError('Las contraseñas no coinciden')
+    }
 
     setSaving(true)
     setTimeout(() => {
@@ -173,6 +176,7 @@ export default function ClienteModal({ cliente, onClose }: Props) {
                   autoComplete="new-password" />
               </div>
             </div>
+            {form.password && <PasswordRequisitos password={form.password} />}
             {isEdit && <p className="text-tn-muted text-xs mt-2">Deja en blanco si no quieres cambiar la contraseña</p>}
           </div>
 
