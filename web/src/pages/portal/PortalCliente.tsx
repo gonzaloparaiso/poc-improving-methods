@@ -986,6 +986,34 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
         )}
       </main>
 
+      {/* Pie: contacto de soporte */}
+      <footer className="max-w-7xl w-full mx-auto px-4 lg:px-8 pb-6 lg:pb-8">
+        <div className="card p-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 bg-tn-yellow/10 rounded-xl flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-white font-bold text-sm">¿Algo no funciona bien o tienes feedback?</p>
+              <p className="text-tn-muted text-xs mt-0.5">Escríbenos y te ayudamos encantados</p>
+            </div>
+          </div>
+          <a
+            href="mailto:soporte@academiatn.com"
+            className="btn-secondary flex items-center gap-2 text-sm py-2.5 px-4 whitespace-nowrap"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            soporte@academiatn.com
+          </a>
+        </div>
+      </footer>
+
       {/* Modal detalle */}
       {bloqueSel && (
         <BloqueDetalleModal
