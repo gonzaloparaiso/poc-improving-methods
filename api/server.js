@@ -507,7 +507,7 @@ const server = http.createServer(async (req, res) => {
         db.prepare(`INSERT INTO _password_resets (token, cliente_id, expira, tipo) VALUES (?,?,?,'cliente')`).run(rtoken, c.id, Date.now() + PASSWORD_RESET_TTL)
         const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
         const link = `${base}/reset?token=${rtoken}`
-        const html = emailResetHtml({ nombre: c.nombre, link, logoUrl: `${base}/tn-logo.png` })
+        const html = emailResetHtml({ nombre: c.nombre, link, logoUrl: `${base}/tn-logo-email.png` })
         sendMail({ to: c.email, subject: 'Restablecer tu contraseña · Training Norte', html })
           .catch(err => console.warn('[email] no se pudo enviar el reset:', err.message))
         if (!emailConfigured()) console.log('[email] Gmail API sin configurar. Enlace de reset:', link)
@@ -545,7 +545,7 @@ const server = http.createServer(async (req, res) => {
         db.prepare(`INSERT INTO _password_resets (token, cliente_id, expira, tipo) VALUES (?,?,?,'staff')`).run(rtoken, u.id, Date.now() + PASSWORD_RESET_TTL)
         const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
         const link = `${base}/admin/reset?token=${rtoken}`
-        const html = emailResetHtml({ nombre: u.nombre, link, logoUrl: `${base}/tn-logo.png` })
+        const html = emailResetHtml({ nombre: u.nombre, link, logoUrl: `${base}/tn-logo-email.png` })
         sendMail({ to: u.email, subject: 'Restablecer tu contraseña · Training Norte', html })
           .catch(err => console.warn('[email] no se pudo enviar el reset:', err.message))
         if (!emailConfigured()) console.log('[email] Gmail API sin configurar. Enlace de reset (staff):', link)
