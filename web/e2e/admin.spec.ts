@@ -41,3 +41,12 @@ test('el admin crea un usuario desde el panel y aparece en la lista', async ({ p
   // Tras crearse (POST /api/users + refresh), aparece en la tabla
   await expect(page.getByText('@laura')).toBeVisible()
 })
+
+test('"¿Has olvidado tu contraseña?" en el login de staff muestra la confirmación de envío', async ({ page }) => {
+  await page.goto('/admin/login')
+  await page.getByRole('button', { name: '¿Has olvidado tu contraseña?' }).click()
+  await page.getByPlaceholder('correo@ejemplo.com').fill('a@a.com')
+  await page.getByRole('button', { name: 'Enviar enlace' }).click()
+  await expect(page.getByText('Revisa tu correo')).toBeVisible()
+  await expect(page.getByText('a@a.com')).toBeVisible()
+})

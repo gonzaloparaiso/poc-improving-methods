@@ -164,3 +164,47 @@ test('reset-password: token inválido → 400; token válido → 200 y login nue
   const login = await api('POST', '/portal/login', { body: { identificador: 'cli@test.com', password: 'reset123' } })
   assert.equal(login.status, 200)
 })
+
+// ── Reset de contraseña olvidada del panel de administradores (staff) ───────
+test('staff/forgot-password responde 200 exista o no el email (no filtra)', async () => {
+  const a = await api('POST', '/staff/forgot-password', { body: { email: 'a@a.com' } })
+  const b = await api('POST', '/staff/forgot-password', { body: { email: 'noexiste@x.com' } })
+  assert.equal(a.status, 200)
+  assert.equal(b.status, 200)
+})
+
+test('staff/reset-password: token inválido → 400; token válido → 200 y login nuevo', async () => {
+  const bad = await api('POST', '/staff/reset-password', { body: { token: 'inexistente', nueva: 'reset123' } })
+  assert.equal(bad.status, 400)
+  await api('POST', '/staff/forgot-password', { body: { email: 'a@a.com' } })
+  const db = new DatabaseSync(DB)
+  const row = db.prepare(`SELECT token FROM _password_resets WHERE cliente_id = ? AND tipo = 'staff' ORDER BY expira DESC`).get('u1')
+  db.close()
+  assert.ok(row && row.token, 'debe existir un token de reset de staff en la BD')
+  const ok = await api('POST', '/staff/reset-password', { body: { token: row.token, nueva: 'reset123' } })
+  assert.equal(ok.status, 200)
+  const login = await api('POST', '/login', { body: { username: 'admin', password: 'reset123' } })
+  assert.equal(login.status, 200)
+  // dejar la contraseña como estaba para no afectar otros tests
+  await api('POST', '/staff/forgot-password', { body: { email: 'a@a.com' } })
+  const db2 = new DatabaseSync(DB)
+  const row2 = db2.prepare(`SELECT token FROM _password_resets WHERE cliente_id = ? AND tipo = 'staff' ORDER BY expira DESC`).get('u1')
+  db2.close()
+  await api('POST', '/staff/reset-password', { body: { token: row2.token, nueva: 'admin123' } })
+})
+
+test('un token de reset de cliente no sirve para /staff/reset-password (y viceversa)', async () => {
+  await api('POST', '/portal/forgot-password', { body: { email: 'cli@test.com' } })
+  const db = new DatabaseSync(DB)
+  const row = db.prepare(`SELECT token FROM _password_resets WHERE cliente_id = ? AND tipo = 'cliente' ORDER BY expira DESC`).get('c1')
+  db.close()
+  const cruzado = await api('POST', '/staff/reset-password', { body: { token: row.token, nueva: 'x1234567' } })
+  assert.equal(cruzado.status, 400)
+  // el token de cliente sigue siendo válido en su propio endpoint
+  const propio = await api('POST', '/portal/reset-password', { body: { token: row.token, nueva: 'reset123' } })
+  assert.equal(propio.status, 200)
+  await api('POST', '/portal/change-password', {
+    token: (await api('POST', '/portal/login', { body: { identificador: 'cli@test.com', password: 'reset123' } })).data.token,
+    body: { actual: 'reset123', nueva: 'cli123' },
+  })
+})

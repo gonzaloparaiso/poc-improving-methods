@@ -65,6 +65,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS "${OBJECT_KEY}" (tarea_id TEXT PRIMARY KEY, 
 db.exec(`CREATE TABLE IF NOT EXISTS _meta (k TEXT PRIMARY KEY, v TEXT)`)
 db.exec(`CREATE TABLE IF NOT EXISTS _sessions (token TEXT PRIMARY KEY, tipo TEXT, sujeto_id TEXT, rol TEXT, expira INTEGER)`)
 db.exec(`CREATE TABLE IF NOT EXISTS _password_resets (token TEXT PRIMARY KEY, cliente_id TEXT, expira INTEGER)`)
+// "tipo" distingue resets de cliente (im_clientes) vs staff (im_users); las filas
+// ya existentes en producción se tratan como 'cliente' (comportamiento previo).
+try { db.exec(`ALTER TABLE _password_resets ADD COLUMN tipo TEXT NOT NULL DEFAULT 'cliente'`) } catch { /* ya existe */ }
 
 function getCollection(key) {
   if (key === OBJECT_KEY) {
@@ -432,9 +435,9 @@ const server = http.createServer(async (req, res) => {
       const email = String(b.email || b.identificador || '').trim().toLowerCase()
       const c = getCollection('im_clientes').find(x => x.activo && (x.email || '').toLowerCase() === email)
       if (c && c.email) {
-        db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ?`).run(c.id) // invalida anteriores
+        db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ? AND tipo = 'cliente'`).run(c.id) // invalida anteriores
         const rtoken = crypto.randomBytes(32).toString('hex')
-        db.prepare(`INSERT INTO _password_resets (token, cliente_id, expira) VALUES (?,?,?)`).run(rtoken, c.id, Date.now() + PASSWORD_RESET_TTL)
+        db.prepare(`INSERT INTO _password_resets (token, cliente_id, expira, tipo) VALUES (?,?,?,'cliente')`).run(rtoken, c.id, Date.now() + PASSWORD_RESET_TTL)
         const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
         const link = `${base}/reset?token=${rtoken}`
         const html =
@@ -456,7 +459,7 @@ const server = http.createServer(async (req, res) => {
       const rtoken = String(b.token || '')
       const nueva = String(b.nueva || '')
       if (nueva.length < 4) throw httpErr(400, 'La contraseña debe tener al menos 4 caracteres')
-      const row = db.prepare(`SELECT * FROM _password_resets WHERE token = ?`).get(rtoken)
+      const row = db.prepare(`SELECT * FROM _password_resets WHERE token = ? AND tipo = 'cliente'`).get(rtoken)
       if (!row || row.expira < Date.now()) {
         if (row) db.prepare(`DELETE FROM _password_resets WHERE token = ?`).run(rtoken)
         throw httpErr(400, 'El enlace no es válido o ha caducado')
@@ -466,7 +469,51 @@ const server = http.createServer(async (req, res) => {
       if (idx < 0) throw httpErr(404, 'Cliente no encontrado')
       arr[idx] = { ...arr[idx], password: hashPassword(nueva) }
       setCollection('im_clientes', arr)
-      db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ?`).run(row.cliente_id)
+      db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ? AND tipo = 'cliente'`).run(row.cliente_id)
+      return json(res, 200, { ok: true })
+    }
+
+    // ── Reset de contraseña olvidada del panel de administradores (público) ──
+    if (p === '/api/staff/forgot-password' && method === 'POST') {
+      const b = await readBody(req)
+      const email = String(b.email || '').trim().toLowerCase()
+      const u = getCollection('im_users').find(x => x.activo && (x.email || '').toLowerCase() === email)
+      if (u && u.email) {
+        db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ? AND tipo = 'staff'`).run(u.id) // invalida anteriores
+        const rtoken = crypto.randomBytes(32).toString('hex')
+        db.prepare(`INSERT INTO _password_resets (token, cliente_id, expira, tipo) VALUES (?,?,?,'staff')`).run(rtoken, u.id, Date.now() + PASSWORD_RESET_TTL)
+        const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
+        const link = `${base}/admin/reset?token=${rtoken}`
+        const html =
+          `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto">` +
+          `<h2 style="color:#111">Restablecer tu contraseña</h2>` +
+          `<p>Hola ${u.nombre || ''}, hemos recibido una solicitud para restablecer la contraseña de tu acceso al panel de Training Norte.</p>` +
+          `<p><a href="${link}" style="display:inline-block;background:#f5c300;color:#111;font-weight:bold;padding:12px 20px;border-radius:8px;text-decoration:none">Crear nueva contraseña</a></p>` +
+          `<p style="color:#666;font-size:13px">El enlace caduca en 1 hora. Si no has sido tú, ignora este correo.</p>` +
+          `<p style="color:#999;font-size:12px">${link}</p></div>`
+        sendMail({ to: u.email, subject: 'Restablecer tu contraseña · Training Norte', html })
+          .catch(err => console.warn('[email] no se pudo enviar el reset:', err.message))
+        if (!emailConfigured()) console.log('[email] Gmail API sin configurar. Enlace de reset (staff):', link)
+      }
+      return json(res, 200, { ok: true }) // nunca revelamos si el email existe
+    }
+
+    if (p === '/api/staff/reset-password' && method === 'POST') {
+      const b = await readBody(req)
+      const rtoken = String(b.token || '')
+      const nueva = String(b.nueva || '')
+      if (nueva.length < 4) throw httpErr(400, 'La contraseña debe tener al menos 4 caracteres')
+      const row = db.prepare(`SELECT * FROM _password_resets WHERE token = ? AND tipo = 'staff'`).get(rtoken)
+      if (!row || row.expira < Date.now()) {
+        if (row) db.prepare(`DELETE FROM _password_resets WHERE token = ?`).run(rtoken)
+        throw httpErr(400, 'El enlace no es válido o ha caducado')
+      }
+      const arr = getCollection('im_users')
+      const idx = arr.findIndex(u => u.id === row.cliente_id)
+      if (idx < 0) throw httpErr(404, 'Usuario no encontrado')
+      arr[idx] = { ...arr[idx], password: hashPassword(nueva) }
+      setCollection('im_users', arr)
+      db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ? AND tipo = 'staff'`).run(row.cliente_id)
       return json(res, 200, { ok: true })
     }
 

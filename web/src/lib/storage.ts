@@ -90,6 +90,14 @@ export const apiForgotPassword = (email: string) =>
 export const apiResetPassword = (token: string, nueva: string) =>
   apiPost('/portal/reset-password', { token, nueva })
 
+/** Igual que apiForgotPassword pero para el panel de administradores (staff). */
+export const apiStaffForgotPassword = (email: string) =>
+  apiPost('/staff/forgot-password', { email })
+
+/** Igual que apiResetPassword pero para el panel de administradores (staff). */
+export const apiStaffResetPassword = (token: string, nueva: string) =>
+  apiPost('/staff/reset-password', { token, nueva })
+
 /** Renueva (mode 'renew') o reactiva creando una nueva suscripción
  *  (mode 'resubscribe') en WooCommerce, cobrando al método guardado.
  *  Devuelve { status: 'paid' } o { status: 'needs_action', payment_url }. */

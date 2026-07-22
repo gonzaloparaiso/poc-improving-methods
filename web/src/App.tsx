@@ -10,6 +10,7 @@ import { usePermisos } from './hooks/usePermisos'
 import { logout as apiLogout } from './lib/storage'
 import { type Seccion, type Cliente } from './types'
 import Login from './pages/Login'
+import StaffReset from './pages/StaffReset'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Administracion from './pages/Administracion'
@@ -93,6 +94,7 @@ function App() {
               path="/admin/login"
               element={user ? <Navigate to="/admin" replace /> : <Login onLogin={loginStaff} />}
             />
+            <Route path="/admin/reset" element={<StaffReset />} />
             <Route
               path="/admin/*"
               element={
