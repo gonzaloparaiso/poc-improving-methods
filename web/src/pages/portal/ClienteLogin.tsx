@@ -64,7 +64,7 @@ export default function ClienteLogin({ onLogin }: Props) {
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                  <label className="label">Email o usuario</label>
+                  <label className="label">Email</label>
                   <input type="text" className="input-field" placeholder="correo@ejemplo.com"
                     value={identificador} onChange={e => setIdentificador(e.target.value)}
                     autoComplete="username" autoFocus required />

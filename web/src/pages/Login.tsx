@@ -80,11 +80,11 @@ export default function Login({ onLogin }: Props) {
 
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                  <label className="label">Usuario</label>
+                  <label className="label">Email</label>
                   <input
                     type="text"
                     className="input-field"
-                    placeholder="usuario"
+                    placeholder="correo@ejemplo.com"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     autoComplete="username"

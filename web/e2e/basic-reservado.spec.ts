@@ -7,7 +7,7 @@ async function loginAdmin(page: Page) {
     await new Promise<void>(r => { const q = indexedDB.deleteDatabase('im_store'); q.onsuccess = q.onerror = q.onblocked = () => r() })
   })
   await page.goto('/admin/login')
-  await page.locator('input[type="text"]').first().fill('admin')
+  await page.locator('input[type="text"]').first().fill('a@a.com')
   await page.locator('input[autocomplete="current-password"]').fill('admin123')
   await page.getByRole('button', { name: /Entrar/i }).click()
   await expect(page).toHaveURL(/\/admin\/clientes$/)

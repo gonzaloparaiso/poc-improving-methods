@@ -44,7 +44,7 @@ async function api(method, p, { token, body } = {}) {
   return { status: res.status, data }
 }
 async function adminToken() {
-  const { data } = await api('POST', '/login', { body: { username: 'admin', password: 'admin123' } })
+  const { data } = await api('POST', '/login', { body: { username: 'a@a.com', password: 'admin123' } })
   return data.token
 }
 
@@ -124,7 +124,7 @@ test('crear producto: válido → 201; programa inexistente → 400; no-admin �
 
   // crear un coach y comprobar que NO puede crear productos
   await api('POST', '/users', { token, body: { nombre: 'Coach', email: 'co@t.com', username: 'co', password: 'Coach123!', rol: 'coach' } })
-  const coach = await api('POST', '/login', { body: { username: 'co', password: 'Coach123!' } })
+  const coach = await api('POST', '/login', { body: { username: 'co@t.com', password: 'Coach123!' } })
   const denied = await api('POST', '/products', { token: coach.data.token, body: { nombre: 'X', tipo: 'recurrente', programas: [] } })
   assert.equal(denied.status, 403)
 })
@@ -178,7 +178,7 @@ test('asignar producto a cliente crea suscripción y genera calendario', async (
 
 // ── Sesión ───────────────────────────────────────────────────────────────────
 test('logout invalida el token', async () => {
-  const { data } = await api('POST', '/login', { body: { username: 'admin', password: 'admin123' } })
+  const { data } = await api('POST', '/login', { body: { username: 'a@a.com', password: 'admin123' } })
   const out = await api('POST', '/logout', { token: data.token })
   assert.equal(out.status, 200)
   const after = await api('GET', '/data', { token: data.token })

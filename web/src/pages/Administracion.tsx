@@ -141,10 +141,9 @@ export default function Administracion() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-tn-border">
-                  {['Usuario', 'Login', 'Email', 'Rol', 'Estado', 'Alta', 'Baja', ''].map(h => (
+                  {['Usuario', 'Email', 'Rol', 'Estado', 'Alta', 'Baja', ''].map(h => (
                     <th key={h} className={`text-left text-tn-muted text-xs font-semibold uppercase tracking-wider px-5 py-4 ${
-                      h === 'Login' ? 'hidden md:table-cell' :
-                      h === 'Email' ? 'hidden lg:table-cell' :
+                      h === 'Email' ? 'hidden md:table-cell' :
                       h === 'Baja'  ? 'hidden xl:table-cell' :
                       h === 'Alta'  ? 'hidden xl:table-cell' :
                       ''
@@ -170,15 +169,8 @@ export default function Administracion() {
                       </div>
                     </td>
 
-                    {/* Login */}
-                    <td className="px-5 py-4 hidden md:table-cell">
-                      <span className="font-mono text-sm text-tn-yellow/80 bg-tn-yellow/5 px-2 py-0.5 rounded">
-                        @{u.username}
-                      </span>
-                    </td>
-
                     {/* Email */}
-                    <td className="px-5 py-4 hidden lg:table-cell">
+                    <td className="px-5 py-4 hidden md:table-cell">
                       <span className="text-tn-muted text-sm">{u.email}</span>
                     </td>
 

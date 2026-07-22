@@ -128,10 +128,9 @@ export default function ClientesList() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-tn-border">
-                  {['Cliente', 'Email', 'Suscripciones', 'Estado', 'Alta', ''].map(h => (
+                  {['Cliente', 'Suscripciones', 'Estado', 'Alta', ''].map(h => (
                     <th key={h} className={`text-left text-tn-muted text-xs font-semibold uppercase tracking-wider px-5 py-4 ${
-                      h === 'Email' ? 'hidden md:table-cell' :
-                      h === 'Alta'  ? 'hidden lg:table-cell' : ''
+                      h === 'Alta' ? 'hidden lg:table-cell' : ''
                     }`}>{h}</th>
                   ))}
                 </tr>
@@ -147,12 +146,9 @@ export default function ClientesList() {
                           <Avatar nombre={c.nombre} apellido={c.apellido} />
                           <div>
                             <p className="text-white font-semibold text-sm group-hover:text-tn-yellow">{c.nombre} {c.apellido}</p>
-                            <p className="text-tn-muted text-xs font-mono">@{c.username}</p>
+                            <p className="text-tn-muted text-xs font-mono">{c.email}</p>
                           </div>
                         </div>
-                      </td>
-                      <td className="px-5 py-4 hidden md:table-cell">
-                        <span className="text-tn-muted text-sm">{c.email}</span>
                       </td>
                       <td className="px-5 py-4">
                         {suscsActivas.length === 0

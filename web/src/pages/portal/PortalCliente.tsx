@@ -1210,7 +1210,7 @@ function Header({ cliente, onLogout }: { cliente: Cliente; onLogout: () => void 
         >
           <div className="text-right hidden sm:block">
             <p className="text-white text-sm font-semibold leading-tight">{cliente.nombre} {cliente.apellido}</p>
-            <p className="text-tn-muted text-xs">@{cliente.username}</p>
+            <p className="text-tn-muted text-xs">{cliente.email}</p>
           </div>
           <div className="w-9 h-9 bg-tn-yellow rounded-full flex items-center justify-center flex-shrink-0">
             <span className="text-tn-black font-black text-sm">{cliente.nombre.charAt(0).toUpperCase()}</span>
@@ -1226,7 +1226,7 @@ function Header({ cliente, onLogout }: { cliente: Cliente; onLogout: () => void 
             <div className="absolute right-0 top-full mt-2 w-56 card shadow-2xl z-50 overflow-hidden py-1">
               <div className="px-4 py-2.5 border-b border-tn-border sm:hidden">
                 <p className="text-white text-sm font-semibold">{cliente.nombre} {cliente.apellido}</p>
-                <p className="text-tn-muted text-xs">@{cliente.username}</p>
+                <p className="text-tn-muted text-xs">{cliente.email}</p>
               </div>
               <button
                 onClick={() => { setMenu(false); setCambiarPass(true) }}

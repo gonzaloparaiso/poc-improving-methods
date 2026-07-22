@@ -211,7 +211,7 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
               ? <span className="badge-active text-xs"><span className="w-1.5 h-1.5 rounded-full bg-green-400" />Activo</span>
               : <span className="badge-inactive text-xs"><span className="w-1.5 h-1.5 rounded-full bg-tn-muted" />Inactivo</span>}
           </div>
-          <p className="text-tn-muted text-sm mt-0.5 font-mono">@{clienteActual.username}</p>
+          <p className="text-tn-muted text-sm mt-0.5 font-mono">{clienteActual.email}</p>
         </div>
         <button onClick={() => setEditModal(true)} className="btn-secondary flex items-center gap-2 flex-shrink-0">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -249,7 +249,6 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                 { label: 'Email', value: clienteActual.email },
                 { label: 'Teléfono', value: clienteActual.telefono || '—' },
                 { label: 'DNI', value: clienteActual.dni || '—' },
-                { label: 'Usuario', value: `@${clienteActual.username}` },
                 { label: 'Dirección', value: clienteActual.direccion || '—' },
                 { label: 'Alta', value: fmtDate(clienteActual.creadoEn) },
                 { label: 'Baja', value: fmtDate(clienteActual.bajaEn) },

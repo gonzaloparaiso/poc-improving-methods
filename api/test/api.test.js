@@ -70,16 +70,25 @@ test('health responde ok', async () => {
 })
 
 test('login con credenciales incorrectas → 401', async () => {
-  const { status } = await api('POST', '/login', { body: { username: 'admin', password: 'mal' } })
+  const { status } = await api('POST', '/login', { body: { username: 'a@a.com', password: 'mal' } })
   assert.equal(status, 401)
 })
 
 test('login admin → token y usuario sin contraseña', async () => {
-  const { status, data } = await api('POST', '/login', { body: { username: 'admin', password: 'admin123' } })
+  const { status, data } = await api('POST', '/login', { body: { username: 'a@a.com', password: 'admin123' } })
   assert.equal(status, 200)
   assert.ok(data.token)
-  assert.equal(data.user.username, 'admin')
+  assert.equal(data.user.username, 'a@a.com')
   assert.equal(data.user.password, undefined, 'no debe exponer la contraseña')
+})
+
+test('login de staff también acepta el email (no solo el username)', async () => {
+  const { status, data } = await api('POST', '/login', { body: { username: 'a@a.com', password: 'admin123' } })
+  assert.equal(status, 200)
+  assert.equal(data.user.username, 'a@a.com')
+  // insensible a mayúsculas en el email
+  const mayus = await api('POST', '/login', { body: { username: 'A@A.COM', password: 'admin123' } })
+  assert.equal(mayus.status, 200)
 })
 
 test('GET /data sin token → 401', async () => {
@@ -88,7 +97,7 @@ test('GET /data sin token → 401', async () => {
 })
 
 test('GET /data con token devuelve colecciones sin contraseñas', async () => {
-  const { data: login } = await api('POST', '/login', { body: { username: 'admin', password: 'admin123' } })
+  const { data: login } = await api('POST', '/login', { body: { username: 'a@a.com', password: 'admin123' } })
   const { status, data } = await api('GET', '/data', { token: login.token })
   assert.equal(status, 200)
   assert.ok(Array.isArray(data.im_users))
@@ -119,10 +128,10 @@ test('un cliente no puede usar endpoints de staff', async () => {
 
 // ── Permisos de dominio ──────────────────────────────────────────────────────
 test('admin crea usuario y el nuevo puede loguear; un coach no puede crear', async () => {
-  const { data: admin } = await api('POST', '/login', { body: { username: 'admin', password: 'admin123' } })
+  const { data: admin } = await api('POST', '/login', { body: { username: 'a@a.com', password: 'admin123' } })
   const r = await api('POST', '/users', { token: admin.token, body: { nombre: 'Coach', email: 'coach@t.com', username: 'coach', password: 'Coach123!', rol: 'coach' } })
   assert.equal(r.status, 201)
-  const login = await api('POST', '/login', { body: { username: 'coach', password: 'Coach123!' } })
+  const login = await api('POST', '/login', { body: { username: 'coach@t.com', password: 'Coach123!' } })
   assert.equal(login.status, 200)
   // El coach NO es admin → no puede crear usuarios
   const denied = await api('POST', '/users', { token: login.data.token, body: { nombre: 'X', email: 'x@t.com', username: 'x', password: 'X1234!ab', rol: 'coach' } })
@@ -131,7 +140,7 @@ test('admin crea usuario y el nuevo puede loguear; un coach no puede crear', asy
 
 // ── Política de contraseñas (mayúscula + minúscula + número + especial + 8) ─
 test('crear usuario con contraseña débil → 400 explicando qué falta', async () => {
-  const { data: admin } = await api('POST', '/login', { body: { username: 'admin', password: 'admin123' } })
+  const { data: admin } = await api('POST', '/login', { body: { username: 'a@a.com', password: 'admin123' } })
   const r = await api('POST', '/users', { token: admin.token, body: { nombre: 'Debil', email: 'debil@t.com', username: 'debil', password: 'abc12345', rol: 'coach' } })
   assert.equal(r.status, 400)
   assert.match(r.data.error, /mayúscula/)
@@ -194,7 +203,7 @@ test('staff/reset-password: token inválido → 400; token válido → 200 y log
   assert.ok(row && row.token, 'debe existir un token de reset de staff en la BD')
   const ok = await api('POST', '/staff/reset-password', { body: { token: row.token, nueva: 'Reset123!' } })
   assert.equal(ok.status, 200)
-  const login = await api('POST', '/login', { body: { username: 'admin', password: 'Reset123!' } })
+  const login = await api('POST', '/login', { body: { username: 'a@a.com', password: 'Reset123!' } })
   assert.equal(login.status, 200)
 })
 

@@ -15,7 +15,8 @@ test('/admin redirige al login de staff', async ({ page }) => {
 
 async function loginAdmin(page) {
   await page.goto('/admin/login')
-  await page.locator('input[type="text"]').first().fill('admin')
+  // El "usuario" de acceso es el email (ver api/server.js: username = email siempre)
+  await page.locator('input[type="text"]').first().fill('a@a.com')
   await page.locator('input[autocomplete="current-password"]').fill('admin123')
   await page.getByRole('button', { name: /Entrar/i }).click()
   await expect(page).toHaveURL(/\/admin\/clientes$/)
@@ -33,13 +34,13 @@ test('el admin crea un usuario desde el panel y aparece en la lista', async ({ p
   await page.getByRole('button', { name: /Nuevo usuario/i }).click()
   await page.getByPlaceholder('Nombre', { exact: true }).fill('Laura')
   await page.getByPlaceholder('correo@ejemplo.com').fill('laura@test.com')
-  await page.getByPlaceholder('nombre_usuario').fill('laura')
   const pwds = page.locator('input[type="password"]')
   await pwds.nth(0).fill('Laura1234!')
   await pwds.nth(1).fill('Laura1234!')
   await page.getByRole('button', { name: /Crear usuario/i }).click()
   // Tras crearse (POST /api/users + refresh), aparece en la tabla
-  await expect(page.getByText('@laura')).toBeVisible()
+  // (el email se repite en la versión móvil -oculta en este viewport- y de escritorio)
+  await expect(page.getByText('laura@test.com').last()).toBeVisible()
 })
 
 test('"¿Has olvidado tu contraseña?" en el login de staff muestra la confirmación de envío', async ({ page }) => {

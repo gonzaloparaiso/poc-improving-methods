@@ -13,7 +13,6 @@ const emptyForm = {
   nombre: '',
   apellido: '',
   email: '',
-  username: '',
   password: '',
   passwordConfirm: '',
   rol: 'coach' as Rol,
@@ -35,7 +34,6 @@ export default function UserModal({ user, onClose }: Props) {
         nombre:          user.nombre,
         apellido:        user.apellido,
         email:           user.email,
-        username:        user.username,
         password:        '',           // nunca mostramos la contraseña real
         passwordConfirm: '',
         rol:             user.rol,
@@ -56,13 +54,12 @@ export default function UserModal({ user, onClose }: Props) {
 
     if (!form.nombre.trim())    return setError('El nombre es obligatorio')
     if (!form.email.trim())     return setError('El email es obligatorio')
-    if (!form.username.trim())  return setError('El usuario es obligatorio')
 
-    // Validar usuario único (salvo el propio en edición)
-    const usernameTaken = users.some(
-      u => u.username === form.username.trim() && u.id !== user?.id,
+    // El email ES el usuario de acceso: debe ser único (salvo el propio en edición)
+    const emailTaken = users.some(
+      u => u.email.trim().toLowerCase() === form.email.trim().toLowerCase() && u.id !== user?.id,
     )
-    if (usernameTaken) return setError('Ese nombre de usuario ya existe')
+    if (emailTaken) return setError('Ese email ya está registrado')
 
     if (!isEdit && !form.password) return setError('La contraseña es obligatoria')
     if (form.password) {
@@ -75,7 +72,8 @@ export default function UserModal({ user, onClose }: Props) {
       nombre:   form.nombre.trim(),
       apellido: form.apellido.trim(),
       email:    form.email.trim(),
-      username: form.username.trim(),
+      // El usuario de acceso es siempre el email (en minúsculas), no un alias aparte
+      username: form.email.trim().toLowerCase(),
       rol:      form.rol,
       activo:   form.activo,
       // En edición: solo cambiamos password si el campo no está vacío
@@ -150,7 +148,7 @@ export default function UserModal({ user, onClose }: Props) {
 
           {/* Email */}
           <div>
-            <label className="label">Email *</label>
+            <label className="label">Email * <span className="text-tn-yellow text-xs">(es su usuario para entrar)</span></label>
             <input
               type="email"
               className="input-field"
@@ -161,28 +159,12 @@ export default function UserModal({ user, onClose }: Props) {
             />
           </div>
 
-          {/* Separador credenciales */}
+          {/* Contraseña */}
           <div className="border-t border-tn-border pt-4">
             <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider mb-3">
-              Credenciales de acceso
+              Contraseña de acceso
             </p>
 
-            {/* Username */}
-            <div className="mb-4">
-              <label className="label">Usuario *</label>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="nombre_usuario"
-                value={form.username}
-                onChange={e => set('username', e.target.value.toLowerCase().replace(/\s/g, '_'))}
-                autoComplete="off"
-                required
-              />
-              <p className="text-tn-muted text-xs mt-1">Solo letras, números y guiones bajos</p>
-            </div>
-
-            {/* Password */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">

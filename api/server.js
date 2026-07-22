@@ -170,6 +170,20 @@ if (!db.prepare(`SELECT v FROM _meta WHERE k='pwhashed'`).get()) {
   }
   db.prepare(`INSERT OR REPLACE INTO _meta (k,v) VALUES ('pwhashed','1')`).run()
 }
+// El "usuario" de acceso pasa a ser siempre el email (idempotente): unifica cuentas
+// antiguas que tuvieran un username distinto, para no confundir al iniciar sesión.
+if (!db.prepare(`SELECT v FROM _meta WHERE k='username_es_email'`).get()) {
+  for (const k of KEYS_CON_PASSWORD) {
+    const arr = getCollection(k); let changed = false
+    for (const r of arr) {
+      if (!r || !r.email) continue
+      const email = String(r.email).trim().toLowerCase()
+      if (r.username !== email) { r.username = email; changed = true }
+    }
+    if (changed) { setCollection(k, arr); console.log(`Usuario = email unificado en ${k}`) }
+  }
+  db.prepare(`INSERT OR REPLACE INTO _meta (k,v) VALUES ('username_es_email','1')`).run()
+}
 console.log(`SQLite listo en ${DB_FILE}`)
 
 // ── Sesiones ──────────────────────────────────────────────────────────────────
@@ -300,14 +314,16 @@ const domain = {
   listUsers: () => sinPasswords(getCollection('im_users')),
   createUser: (b) => {
     if (!b.nombre || !String(b.nombre).trim()) throw httpErr(400, 'El nombre es obligatorio')
-    if (!b.username || !String(b.username).trim()) throw httpErr(400, 'El usuario es obligatorio')
+    if (!b.email || !String(b.email).trim()) throw httpErr(400, 'El email es obligatorio')
     if (!b.password) throw httpErr(400, 'La contraseña es obligatoria')
     validarPasswordFuerte(b.password)
     const rol = b.rol || 'coach'
     if (!ROLES.includes(rol)) throw httpErr(400, `Rol inválido (${ROLES.join(', ')})`)
+    const email = String(b.email).trim().toLowerCase()
     const users = getCollection('im_users')
-    if (users.some(u => u.username === String(b.username).trim())) throw httpErr(409, 'Ese usuario ya existe')
-    const nuevo = { id: genId(), nombre: String(b.nombre).trim(), apellido: (b.apellido || '').trim(), email: (b.email || '').trim(), username: String(b.username).trim(), password: hashPassword(b.password), rol, activo: b.activo !== false, creadoEn: new Date().toISOString(), bajaEn: null }
+    if (users.some(u => (u.email || '').toLowerCase() === email)) throw httpErr(409, 'Ese email ya está registrado')
+    // El usuario de acceso ES el email (sin identificador aparte, para no confundir al iniciar sesión).
+    const nuevo = { id: genId(), nombre: String(b.nombre).trim(), apellido: (b.apellido || '').trim(), email: String(b.email).trim(), username: email, password: hashPassword(b.password), rol, activo: b.activo !== false, creadoEn: new Date().toISOString(), bajaEn: null }
     setCollection('im_users', [...users, nuevo])
     return sinPassword(nuevo)
   },
@@ -332,13 +348,13 @@ const domain = {
   createClient: (b) => {
     if (!b.nombre || !String(b.nombre).trim()) throw httpErr(400, 'El nombre es obligatorio')
     if (!b.email || !String(b.email).trim()) throw httpErr(400, 'El email es obligatorio')
-    if (!b.username || !String(b.username).trim()) throw httpErr(400, 'El usuario es obligatorio')
     if (!b.password) throw httpErr(400, 'La contraseña es obligatoria')
     validarPasswordFuerte(b.password)
+    const email = String(b.email).trim().toLowerCase()
     const clientes = getCollection('im_clientes')
-    if (clientes.some(c => c.email === String(b.email).trim())) throw httpErr(409, 'Ese email ya está registrado')
-    if (clientes.some(c => c.username === String(b.username).trim())) throw httpErr(409, 'Ese usuario ya existe')
-    const nuevo = { id: genId(), nombre: String(b.nombre).trim(), apellido: (b.apellido || '').trim(), email: String(b.email).trim(), username: String(b.username).trim(), password: hashPassword(b.password), activo: b.activo !== false, creadoEn: new Date().toISOString(), bajaEn: null, suscripcionesIds: [], telefono: (b.telefono || '').trim(), direccion: (b.direccion || '').trim(), dni: (b.dni || '').trim(), contactos: [] }
+    if (clientes.some(c => (c.email || '').toLowerCase() === email)) throw httpErr(409, 'Ese email ya está registrado')
+    // El usuario de acceso ES el email (sin identificador aparte, para no confundir al iniciar sesión).
+    const nuevo = { id: genId(), nombre: String(b.nombre).trim(), apellido: (b.apellido || '').trim(), email: String(b.email).trim(), username: email, password: hashPassword(b.password), activo: b.activo !== false, creadoEn: new Date().toISOString(), bajaEn: null, suscripcionesIds: [], telefono: (b.telefono || '').trim(), direccion: (b.direccion || '').trim(), dni: (b.dni || '').trim(), contactos: [] }
     setCollection('im_clientes', [...clientes, nuevo])
     let cat = getCollection('im_suscripciones_catalogo')
     let test = cat.find(c => c.nombre === 'Test')
@@ -464,7 +480,9 @@ const server = http.createServer(async (req, res) => {
 
     if (p === '/api/login' && method === 'POST') {
       const b = await readBody(req)
-      const u = getCollection('im_users').find(x => x.activo && x.username === String(b.username || '').trim())
+      const id = String(b.username || '').trim()
+      const idLower = id.toLowerCase()
+      const u = getCollection('im_users').find(x => x.activo && (x.username === id || (x.email && x.email.toLowerCase() === idLower)))
       if (!u || !verifyPassword(b.password || '', u.password)) throw httpErr(401, 'Usuario o contraseña incorrectos')
       const token = crearSesion('staff', u.id, u.rol)
       return json(res, 200, { token, user: sinPassword(u) })

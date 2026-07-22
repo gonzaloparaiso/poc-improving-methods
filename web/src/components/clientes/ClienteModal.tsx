@@ -10,7 +10,7 @@ interface Props {
 }
 
 const empty = {
-  nombre: '', apellido: '', email: '', username: '', password: '', passwordConfirm: '', activo: true,
+  nombre: '', apellido: '', email: '', password: '', passwordConfirm: '', activo: true,
   telefono: '', direccion: '', dni: '',
   nif: '', razonSocial: '', direccionFacturacion: '', emailFacturacion: '',
 }
@@ -27,7 +27,7 @@ export default function ClienteModal({ cliente, onClose }: Props) {
     setForm(cliente
       ? {
           nombre: cliente.nombre, apellido: cliente.apellido, email: cliente.email,
-          username: cliente.username, password: '', passwordConfirm: '', activo: cliente.activo,
+          password: '', passwordConfirm: '', activo: cliente.activo,
           telefono: cliente.telefono ?? '', direccion: cliente.direccion ?? '', dni: cliente.dni ?? '',
           nif: cliente.nif ?? '', razonSocial: cliente.razonSocial ?? '',
           direccionFacturacion: cliente.direccionFacturacion ?? '', emailFacturacion: cliente.emailFacturacion ?? '',
@@ -44,12 +44,10 @@ export default function ClienteModal({ cliente, onClose }: Props) {
     setError('')
     if (!form.nombre.trim())   return setError('El nombre es obligatorio')
     if (!form.email.trim())    return setError('El email es obligatorio')
-    if (!form.username.trim()) return setError('El usuario es obligatorio')
 
-    const emailTaken = clientes.some(c => c.email === form.email.trim() && c.id !== cliente?.id)
+    // El email ES el usuario de acceso: debe ser único (salvo el propio en edición)
+    const emailTaken = clientes.some(c => c.email.trim().toLowerCase() === form.email.trim().toLowerCase() && c.id !== cliente?.id)
     if (emailTaken) return setError('Ese email ya está registrado')
-    const userTaken = clientes.some(c => c.username === form.username.trim() && c.id !== cliente?.id)
-    if (userTaken) return setError('Ese nombre de usuario ya existe')
 
     if (!isEdit && !form.password) return setError('La contraseña es obligatoria')
     if (form.password) {
@@ -62,7 +60,9 @@ export default function ClienteModal({ cliente, onClose }: Props) {
     setTimeout(() => {
       const datos = {
         nombre: form.nombre.trim(), apellido: form.apellido.trim(),
-        email: form.email.trim(), username: form.username.trim(),
+        email: form.email.trim(),
+        // El usuario de acceso es siempre el email (en minúsculas), no un alias aparte
+        username: form.email.trim().toLowerCase(),
         activo: form.activo,
         telefono: form.telefono.trim(), direccion: form.direccion.trim(), dni: form.dni.trim(),
         nif: form.nif.trim(), razonSocial: form.razonSocial.trim(),
@@ -134,14 +134,6 @@ export default function ClienteModal({ cliente, onClose }: Props) {
             <label className="label">Dirección</label>
             <input type="text" className="input-field" placeholder="Calle, número, ciudad, CP"
               value={form.direccion} onChange={e => set('direccion', e.target.value)} />
-          </div>
-
-          {/* Username */}
-          <div>
-            <label className="label">Usuario *</label>
-            <input type="text" className="input-field" placeholder="alias_usuario"
-              value={form.username}
-              onChange={e => set('username', e.target.value.toLowerCase().replace(/\s/g, '_'))} required />
           </div>
 
           {/* Contraseña */}

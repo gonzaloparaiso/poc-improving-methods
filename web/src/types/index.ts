@@ -13,7 +13,7 @@ export interface Usuario {
   nombre: string
   apellido: string
   email: string
-  username: string
+  username: string       // siempre igual al email (es el identificador de acceso, ver api/server.js)
   password: string      // plain text para el POC
   rol: Rol
   activo: boolean
@@ -91,7 +91,7 @@ export interface Cliente {
   nombre: string
   apellido: string
   email: string         // usado para login del portal cliente
-  username: string      // alias / nombre de usuario
+  username: string      // siempre igual al email (se mantiene por compatibilidad interna)
   password: string      // usado para login del portal cliente
   activo: boolean
   creadoEn: string
