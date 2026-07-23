@@ -528,8 +528,8 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                         <p className="text-white font-bold text-sm truncate">{cat!.nombre}</p>
                         <p className="text-tn-muted text-xs">
                           {esUnico
-                            ? `Acceso permanente${cat!.precioMensual ? ` · ${cat!.precioMensual} €` : ''}`
-                            : `Activa hasta ${fmtFecha(susc.fechaFin)}${cat!.precioMensual ? ` · ${cat!.precioMensual} €/mes` : ''}`}
+                            ? 'Acceso permanente'
+                            : `Se renueva automáticamente el ${fmtFecha(susc.fechaFin)}`}
                         </p>
                       </div>
                     </div>
@@ -545,14 +545,15 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setRenovar({ catalogoId: cat!.id, nombre: cat!.nombre, precio: cat!.precioMensual, mode: 'renew' })}
-                        className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3 whitespace-nowrap"
+                        disabled
+                        title="Próximamente"
+                        className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3 whitespace-nowrap opacity-40 cursor-not-allowed"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
-                        Renovar{cat!.precioMensual ? ` · ${cat!.precioMensual} €` : ''}
+                        Renovar
                       </button>
                     )}
                   </div>
