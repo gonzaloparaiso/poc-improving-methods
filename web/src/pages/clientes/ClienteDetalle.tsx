@@ -69,6 +69,7 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   const [entError, setEntError]           = useState('')
   const [entGuardando, setEntGuardando]   = useState(false)
   const [borrarEntrenador, setBorrarEntrenador] = useState<{ id: string; email: string } | null>(null)
+  const [confirmarQuitarBox, setConfirmarQuitarBox] = useState(false)
 
   const missSuscs = suscripciones.filter(s => s.clienteId === clienteActual.id)
   const missSuscsActivas = missSuscs.filter(s => s.activa)
@@ -202,6 +203,15 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
       setBorrarEntrenador(null)
     }
   }
+  const toggleEsBox = () => {
+    // Al quitar "box" con entrenadores ya dados de alta, avisamos: no se borran,
+    // pero dejan de poder entrar hasta que se vuelva a marcar como box.
+    if (clienteActual.esBox && (clienteActual.credencialesExtra ?? []).length > 0) {
+      setConfirmarQuitarBox(true)
+    } else {
+      editarCliente(clienteActual.id, { esBox: !clienteActual.esBox })
+    }
+  }
 
   // ── Vistas a pantalla completa ────────────────────────────────────────────────
   if (vistaCombi && seleccion.size > 0) {
@@ -303,6 +313,25 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
                   <p className="text-sm font-semibold text-white break-words">{value}</p>
                 </div>
               ))}
+            </div>
+
+            {/* Es un box: toggle directo, sin pasar por Editar */}
+            <div className="mt-5 pt-4 border-t border-tn-border flex items-center justify-between gap-4">
+              <div>
+                <p className="text-white text-sm font-semibold">Es un box</p>
+                <p className="text-tn-muted text-xs mt-0.5">
+                  Podrá dar de alta entrenadores con el mismo acceso que esta cuenta.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={clienteActual.esBox === true}
+                onClick={toggleEsBox}
+                className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors ${clienteActual.esBox ? 'bg-tn-yellow' : 'bg-tn-border'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${clienteActual.esBox ? 'translate-x-5' : ''}`} />
+              </button>
             </div>
           </div>
 
@@ -935,6 +964,15 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
           confirmLabel="Eliminar"
           onConfirm={() => void eliminarEntrenador(borrarEntrenador.id)}
           onCancel={() => setBorrarEntrenador(null)} />
+      )}
+
+      {/* Confirm quitar "box" teniendo entrenadores dados de alta */}
+      {confirmarQuitarBox && (
+        <ConfirmDialog title='Quitar "Es un box"'
+          description={`Este cliente tiene ${(clienteActual.credencialesExtra ?? []).length} entrenador(es) dado(s) de alta. Dejarán de poder entrar hasta que vuelvas a marcarlo como box (no se borran).`}
+          confirmLabel="Quitar de todos modos"
+          onConfirm={() => { editarCliente(clienteActual.id, { esBox: false }); setConfirmarQuitarBox(false) }}
+          onCancel={() => setConfirmarQuitarBox(false)} />
       )}
     </div>
   )
