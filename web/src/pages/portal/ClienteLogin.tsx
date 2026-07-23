@@ -96,9 +96,12 @@ export default function ClienteLogin({ onLogin }: Props) {
               </div>
 
               <div className="mt-6 pt-6 border-t border-tn-border text-center">
-                <a href="/admin/login" className="text-tn-muted text-xs hover:text-tn-yellow transition-colors">
-                  ¿Eres entrenador? Accede aquí
-                </a>
+                <p className="text-tn-muted text-xs">
+                  ¿Dudas, problemas o feedback? Escríbenos a{' '}
+                  <a href="mailto:soporte@academiatn.com" className="text-tn-yellow hover:underline">
+                    soporte@academiatn.com
+                  </a>
+                </p>
               </div>
             </>
           ) : forgotSent ? (
