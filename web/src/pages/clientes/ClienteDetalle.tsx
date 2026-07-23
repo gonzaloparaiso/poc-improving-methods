@@ -4,7 +4,9 @@ import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
 import { useCalendarios, fmtFecha, siguienteLunes } from '../../context/CalendariosContext'
 import { usePermisos } from '../../hooks/usePermisos'
-import { apiAssignSubscription, refreshFromServer } from '../../lib/storage'
+import { apiAssignSubscription, apiAddCredencialCliente, apiRemoveCredencialCliente, refreshFromServer } from '../../lib/storage'
+import PasswordRequisitos from '../../components/PasswordRequisitos'
+import { errorPassword } from '../../lib/passwordPolicy'
 import ClienteModal from '../../components/clientes/ClienteModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import CalendarioClienteView from './CalendarioClienteView'
@@ -20,7 +22,7 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9)
 }
 
-type Tab = 'info' | 'suscripciones' | 'contactos' | 'dinero'
+type Tab = 'info' | 'suscripciones' | 'contactos' | 'dinero' | 'entrenadores'
 
 interface Props {
   cliente: Cliente
@@ -58,6 +60,15 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   // Contactos
   const [contactoEdit, setContactoEdit]   = useState<ContactoCliente | 'nuevo' | null>(null)
   const [borrarContacto, setBorrarContacto] = useState<ContactoCliente | null>(null)
+
+  // Entrenadores (credenciales extra de un box)
+  const [nuevoEntrenador, setNuevoEntrenador] = useState(false)
+  const [entEmail, setEntEmail]           = useState('')
+  const [entPassword, setEntPassword]     = useState('')
+  const [entConfirm, setEntConfirm]       = useState('')
+  const [entError, setEntError]           = useState('')
+  const [entGuardando, setEntGuardando]   = useState(false)
+  const [borrarEntrenador, setBorrarEntrenador] = useState<{ id: string; email: string } | null>(null)
 
   const missSuscs = suscripciones.filter(s => s.clienteId === clienteActual.id)
   const missSuscsActivas = missSuscs.filter(s => s.activa)
@@ -164,6 +175,34 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     setBorrarContacto(null)
   }
 
+  // ── Entrenadores (credenciales extra de un box) ───────────────────────────────
+  const crearEntrenador = async (e: FormEvent) => {
+    e.preventDefault()
+    setEntError('')
+    if (!entEmail.trim()) return setEntError('El email es obligatorio')
+    const err = errorPassword(entPassword)
+    if (err) return setEntError(err)
+    if (entPassword !== entConfirm) return setEntError('Las contraseñas no coinciden')
+    setEntGuardando(true)
+    try {
+      await apiAddCredencialCliente(clienteActual.id, entEmail.trim(), entPassword)
+      await refreshFromServer()
+      setNuevoEntrenador(false); setEntEmail(''); setEntPassword(''); setEntConfirm('')
+    } catch (err) {
+      setEntError(err instanceof Error ? err.message : 'No se pudo añadir el entrenador')
+    } finally {
+      setEntGuardando(false)
+    }
+  }
+  const eliminarEntrenador = async (credId: string) => {
+    try {
+      await apiRemoveCredencialCliente(clienteActual.id, credId)
+      await refreshFromServer()
+    } finally {
+      setBorrarEntrenador(null)
+    }
+  }
+
   // ── Vistas a pantalla completa ────────────────────────────────────────────────
   if (vistaCombi && seleccion.size > 0) {
     const calsSeleccionados = misCalendarios.filter(c => seleccion.has(c.id))
@@ -186,6 +225,9 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
     { id: 'dinero', label: 'Dinero', icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
     ) },
+    ...(clienteActual.esBox ? [{ id: 'entrenadores' as Tab, label: 'Entrenadores', icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M9 20H4v-2a3 3 0 015.356-1.857M9 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M13 7a3 3 0 11-6 0 3 3 0 016 0zm7 3a2 2 0 11-4 0 2 2 0 014 0zM6 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+    ) }] : []),
   ]
 
   const inicial = (clienteActual.nombre[0] ?? '?').toUpperCase()
@@ -210,6 +252,9 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
             {clienteActual.activo
               ? <span className="badge-active text-xs"><span className="w-1.5 h-1.5 rounded-full bg-green-400" />Activo</span>
               : <span className="badge-inactive text-xs"><span className="w-1.5 h-1.5 rounded-full bg-tn-muted" />Inactivo</span>}
+            {clienteActual.esBox && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-tn-yellow/10 text-tn-yellow">Box</span>
+            )}
           </div>
           <p className="text-tn-muted text-sm mt-0.5 font-mono">{clienteActual.email}</p>
         </div>
@@ -649,6 +694,90 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
         </div>
       )}
 
+      {/* ════════════ TAB: ENTRENADORES ════════════ */}
+      {tab === 'entrenadores' && clienteActual.esBox && (
+        <div className="space-y-4">
+          <div className="card p-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-white font-bold flex items-center gap-2">
+                  <svg className="w-4 h-4 text-tn-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M9 20H4v-2a3 3 0 015.356-1.857M9 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M13 7a3 3 0 11-6 0 3 3 0 016 0zm7 3a2 2 0 11-4 0 2 2 0 014 0zM6 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                  Entrenadores
+                </h3>
+                <p className="text-tn-muted text-xs mt-0.5">
+                  Acceden con su propio email y contraseña, con el mismo acceso que {clienteActual.nombre}.
+                </p>
+              </div>
+              {!nuevoEntrenador && (
+                <button type="button" onClick={() => setNuevoEntrenador(true)} className="btn-secondary flex items-center gap-2 text-sm py-2 px-3 whitespace-nowrap">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  Añadir entrenador
+                </button>
+              )}
+            </div>
+
+            {nuevoEntrenador && (
+              <form onSubmit={crearEntrenador} className="border border-tn-border rounded-xl p-4 space-y-3 mb-4">
+                <div>
+                  <label className="label">Email *</label>
+                  <input type="email" className="input-field" placeholder="entrenador@ejemplo.com" autoFocus
+                    value={entEmail} onChange={e => setEntEmail(e.target.value)} required />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Contraseña *</label>
+                    <input type="password" className="input-field" placeholder="••••••••" autoComplete="new-password"
+                      value={entPassword} onChange={e => setEntPassword(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label className="label">Confirmar *</label>
+                    <input type="password" className="input-field" placeholder="••••••••" autoComplete="new-password"
+                      value={entConfirm} onChange={e => setEntConfirm(e.target.value)} required />
+                  </div>
+                </div>
+                {entPassword && <PasswordRequisitos password={entPassword} />}
+                {entError && (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">{entError}</div>
+                )}
+                <div className="flex gap-3 pt-1">
+                  <button type="button" className="btn-secondary flex-1"
+                    onClick={() => { setNuevoEntrenador(false); setEntError(''); setEntEmail(''); setEntPassword(''); setEntConfirm('') }}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn-primary flex-1" disabled={entGuardando}>
+                    {entGuardando ? 'Guardando...' : 'Añadir'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {(clienteActual.credencialesExtra ?? []).length === 0 ? (
+              <p className="text-tn-muted text-sm text-center py-6">Todavía no hay entrenadores dados de alta.</p>
+            ) : (
+              <div className="divide-y divide-tn-border">
+                {(clienteActual.credencialesExtra ?? []).map(cr => (
+                  <div key={cr.id} className="py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-semibold truncate">{cr.email}</p>
+                      <p className="text-tn-muted text-xs">Alta: {fmtDate(cr.creadoEn)}</p>
+                    </div>
+                    <button type="button" onClick={() => setBorrarEntrenador({ id: cr.id, email: cr.email })}
+                      className="p-2 text-tn-muted hover:text-red-400 transition-colors flex-shrink-0" title="Eliminar entrenador">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ════════════ MODALES ════════════ */}
 
       {/* Asignar suscripción */}
@@ -797,6 +926,15 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
           confirmLabel="Eliminar"
           onConfirm={() => eliminarContacto(borrarContacto.id)}
           onCancel={() => setBorrarContacto(null)} />
+      )}
+
+      {/* Confirm borrar entrenador */}
+      {borrarEntrenador && (
+        <ConfirmDialog title="Eliminar entrenador"
+          description={`¿Eliminar el acceso de "${borrarEntrenador.email}"? Dejará de poder entrar con esas credenciales.`}
+          confirmLabel="Eliminar"
+          onConfirm={() => void eliminarEntrenador(borrarEntrenador.id)}
+          onCancel={() => setBorrarEntrenador(null)} />
       )}
     </div>
   )

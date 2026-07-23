@@ -275,3 +275,94 @@ test('renovar: staff → 403; producto sin wcProductId → 400; producto inexist
   const noCat = await api('POST', '/portal/renew', { token: portal.data.token, body: { catalogoId: 'no-existe' } })
   assert.equal(noCat.status, 404)
 })
+
+// ── Clientes "box": entrenadores con credenciales extra ──────────────────────
+test('box: el admin añade un entrenador, este entra con el MISMO acceso, y no un cliente normal', async () => {
+  const token = await adminToken()
+  const cli = await api('POST', '/clients', {
+    token, body: { nombre: 'Box Uno', email: 'box1@test.com', username: 'box1', password: 'Box12345!', esBox: true },
+  })
+  assert.equal(cli.status, 201)
+  assert.equal(cli.data.esBox, true)
+
+  const otro = await api('POST', '/clients', { token, body: { nombre: 'Normal', email: 'normal1@test.com', username: 'n1', password: 'Norm123!' } })
+  const denegado = await api('POST', `/clients/${otro.data.id}/credenciales`, { token, body: { email: 'coach1@test.com', password: 'Coach123!' } })
+  assert.equal(denegado.status, 403, 'un cliente que no es box no puede tener entrenadores')
+
+  const alta = await api('POST', `/clients/${cli.data.id}/credenciales`, { token, body: { email: 'coach1@test.com', password: 'Coach123!' } })
+  assert.equal(alta.status, 201)
+  assert.ok(alta.data.credencialesExtra.some(c => c.email === 'coach1@test.com'))
+  assert.equal(alta.data.credencialesExtra[0].password, undefined, 'nunca debe exponer el hash')
+
+  const loginCoach = await api('POST', '/portal/login', { body: { identificador: 'coach1@test.com', password: 'Coach123!' } })
+  assert.equal(loginCoach.status, 200)
+  assert.equal(loginCoach.data.cliente.id, cli.data.id, 'el entrenador entra en la MISMA cuenta del box')
+
+  const me = await api('GET', '/portal/me', { token: loginCoach.data.token })
+  assert.equal(me.data.cliente.id, cli.data.id)
+})
+
+test('box: email de entrenador duplicado → 409; contraseña débil → 400', async () => {
+  const token = await adminToken()
+  const cli = await api('POST', '/clients', { token, body: { nombre: 'Box Dos', email: 'box2@test.com', username: 'box2', password: 'Box12345!', esBox: true } })
+  await api('POST', `/clients/${cli.data.id}/credenciales`, { token, body: { email: 'coach2@test.com', password: 'Coach123!' } })
+
+  const dup = await api('POST', `/clients/${cli.data.id}/credenciales`, { token, body: { email: 'coach2@test.com', password: 'Otra123!' } })
+  assert.equal(dup.status, 409)
+
+  const dupPrincipal = await api('POST', `/clients/${cli.data.id}/credenciales`, { token, body: { email: 'box2@test.com', password: 'Otra123!' } })
+  assert.equal(dupPrincipal.status, 409, 'tampoco puede coincidir con el email principal de otro/mismo cliente')
+
+  const debil = await api('POST', `/clients/${cli.data.id}/credenciales`, { token, body: { email: 'coach3@test.com', password: 'abc12345' } })
+  assert.equal(debil.status, 400)
+})
+
+test('box: eliminar un entrenador le quita el acceso inmediatamente', async () => {
+  const token = await adminToken()
+  const cli = await api('POST', '/clients', { token, body: { nombre: 'Box Tres', email: 'box3@test.com', username: 'box3', password: 'Box12345!', esBox: true } })
+  const alta = await api('POST', `/clients/${cli.data.id}/credenciales`, { token, body: { email: 'coach4@test.com', password: 'Coach123!' } })
+  const credId = alta.data.credencialesExtra[0].id
+
+  const antes = await api('POST', '/portal/login', { body: { identificador: 'coach4@test.com', password: 'Coach123!' } })
+  assert.equal(antes.status, 200)
+
+  const del = await api('DELETE', `/clients/${cli.data.id}/credenciales/${credId}`, { token })
+  assert.equal(del.status, 200)
+  assert.equal((del.data.credencialesExtra || []).length, 0)
+
+  const despues = await api('POST', '/portal/login', { body: { identificador: 'coach4@test.com', password: 'Coach123!' } })
+  assert.equal(despues.status, 401)
+})
+
+test('box: un entrenador puede autogestionar entrenadores (mismos permisos) y cambiar SU propia contraseña', async () => {
+  const token = await adminToken()
+  const cli = await api('POST', '/clients', { token, body: { nombre: 'Box Cuatro', email: 'box4@test.com', username: 'box4', password: 'Box12345!', esBox: true } })
+  await api('POST', `/clients/${cli.data.id}/credenciales`, { token, body: { email: 'coach5@test.com', password: 'Coach123!' } })
+  const loginCoach = await api('POST', '/portal/login', { body: { identificador: 'coach5@test.com', password: 'Coach123!' } })
+  const coachToken = loginCoach.data.token
+
+  // El propio entrenador da de alta a otro entrenador desde el portal
+  const auto = await api('POST', '/portal/credenciales', { token: coachToken, body: { email: 'coach6@test.com', password: 'Coach123!' } })
+  assert.equal(auto.status, 201)
+  assert.equal(auto.data.credencialesExtra.length, 2)
+
+  // Cambia SU propia contraseña (no la del cliente principal del box)
+  const cambio = await api('POST', '/portal/change-password', { token: coachToken, body: { actual: 'Coach123!', nueva: 'NuevaCoach1!' } })
+  assert.equal(cambio.status, 200)
+  const reloginCoach = await api('POST', '/portal/login', { body: { identificador: 'coach5@test.com', password: 'NuevaCoach1!' } })
+  assert.equal(reloginCoach.status, 200)
+  // La cuenta principal del box sigue con su contraseña original, intacta
+  const loginPrincipal = await api('POST', '/portal/login', { body: { identificador: 'box4@test.com', password: 'Box12345!' } })
+  assert.equal(loginPrincipal.status, 200)
+
+  // Un cliente normal (no cliente-session del box) no puede borrar entrenadores ajenos vía self-service
+  const credId = auto.data.credencialesExtra[1].id
+  const otroClienteLogin = await api('POST', '/clients', { token, body: { nombre: 'Normal2', email: 'normal2@test.com', username: 'n2', password: 'Norm123!' } })
+  const loginNormal = await api('POST', '/portal/login', { body: { identificador: 'normal2@test.com', password: 'Norm123!' } })
+  const borradoAjeno = await api('DELETE', `/portal/credenciales/${credId}`, { token: loginNormal.data.token })
+  // Borra dentro de SU PROPIO cliente (que no tiene esa credencial) → queda como si no existiera, no debe afectar al otro box
+  assert.equal(borradoAjeno.status, 200)
+  const meBox = await api('GET', '/portal/me', { token: coachToken })
+  assert.ok(meBox.data.cliente.credencialesExtra.some(c => c.id === credId), 'el entrenador del OTRO cliente no debe verse afectado')
+  void otroClienteLogin
+})

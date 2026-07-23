@@ -103,7 +103,12 @@ function verifyPassword(plain, stored) {
   const a = Buffer.from(hash, 'hex'), b = Buffer.from(test, 'hex')
   return a.length === b.length && crypto.timingSafeEqual(a, b)
 }
-const sinPassword = (o) => { if (!o) return o; const { password, ...rest } = o; return rest }
+const sinPassword = (o) => {
+  if (!o) return o
+  const { password, credencialesExtra, ...rest } = o
+  if (!Array.isArray(credencialesExtra)) return rest
+  return { ...rest, credencialesExtra: credencialesExtra.map(cr => { if (!cr) return cr; const { password: _p, ...r } = cr; return r }) }
+}
 const sinPasswords = (arr) => Array.isArray(arr) ? arr.map(sinPassword) : arr
 
 // ── Política de contraseñas ──────────────────────────────────────────────────
@@ -126,15 +131,30 @@ function validarPasswordFuerte(pw) {
 }
 
 /** Para PUT de im_users/im_clientes: hashea contraseñas nuevas y preserva las existentes
- *  cuando vienen vacías (el frontend nunca recibe la contraseña, así que no la reenvía). */
+ *  cuando vienen vacías (el frontend nunca recibe la contraseña, así que no la reenvía).
+ *  En im_clientes, además reconcilia igual las contraseñas de credencialesExtra (los
+ *  "entrenadores" de un box) para que un PUT que edite otro campo del cliente no las
+ *  borre — el frontend tampoco las recibe nunca. */
 function preservarPasswords(key, incoming) {
   if (!Array.isArray(incoming)) return incoming
-  const existentes = Object.fromEntries(getCollection(key).map(r => [r.id, r.password]))
+  const actuales = getCollection(key)
+  const existentes = Object.fromEntries(actuales.map(r => [r.id, r.password]))
+  const existentesCred = Object.fromEntries(actuales.map(r => [r.id, Object.fromEntries((r.credencialesExtra || []).map(cr => [cr.id, cr.password]))]))
   return incoming.map(r => {
     if (!r) return r
-    if (r.password && !isHashed(r.password)) { validarPasswordFuerte(r.password); return { ...r, password: hashPassword(r.password) } }
-    if (!r.password) { const prev = existentes[r.id]; return prev ? { ...r, password: prev } : r }
-    return r
+    let out = r
+    if (r.password && !isHashed(r.password)) { validarPasswordFuerte(r.password); out = { ...out, password: hashPassword(r.password) } }
+    else if (!r.password) { const prev = existentes[r.id]; if (prev) out = { ...out, password: prev } }
+    if (Array.isArray(r.credencialesExtra)) {
+      const prevCred = existentesCred[r.id] || {}
+      out = { ...out, credencialesExtra: r.credencialesExtra.map(cr => {
+        if (!cr) return cr
+        if (cr.password && !isHashed(cr.password)) { validarPasswordFuerte(cr.password); return { ...cr, password: hashPassword(cr.password) } }
+        if (!cr.password) { const prevPw = prevCred[cr.id]; if (prevPw) return { ...cr, password: prevPw } }
+        return cr
+      }) }
+    }
+    return out
   })
 }
 
@@ -354,7 +374,7 @@ const domain = {
     const clientes = getCollection('im_clientes')
     if (clientes.some(c => (c.email || '').toLowerCase() === email)) throw httpErr(409, 'Ese email ya está registrado')
     // El usuario de acceso ES el email (sin identificador aparte, para no confundir al iniciar sesión).
-    const nuevo = { id: genId(), nombre: String(b.nombre).trim(), apellido: (b.apellido || '').trim(), email: String(b.email).trim(), username: email, password: hashPassword(b.password), activo: b.activo !== false, creadoEn: new Date().toISOString(), bajaEn: null, suscripcionesIds: [], telefono: (b.telefono || '').trim(), direccion: (b.direccion || '').trim(), dni: (b.dni || '').trim(), contactos: [] }
+    const nuevo = { id: genId(), nombre: String(b.nombre).trim(), apellido: (b.apellido || '').trim(), email: String(b.email).trim(), username: email, password: hashPassword(b.password), activo: b.activo !== false, creadoEn: new Date().toISOString(), bajaEn: null, suscripcionesIds: [], telefono: (b.telefono || '').trim(), direccion: (b.direccion || '').trim(), dni: (b.dni || '').trim(), contactos: [], esBox: b.esBox === true, credencialesExtra: [] }
     setCollection('im_clientes', [...clientes, nuevo])
     let cat = getCollection('im_suscripciones_catalogo')
     let test = cat.find(c => c.nombre === 'Test')
@@ -432,6 +452,35 @@ function syncDesdeWC(sub) {
   return { cliente: cliente.id, productos: matched, activa, fechaFin, calendarios: calsChanged }
 }
 
+// ── Credenciales extra de un box (entrenadores con el mismo acceso) ───────────
+// Usado tanto por el propio cliente (self-service desde el portal) como por
+// el panel de administradores.
+function agregarCredencial(clienteId, b) {
+  const arr = getCollection('im_clientes')
+  const idx = arr.findIndex(c => c.id === clienteId)
+  if (idx < 0) throw httpErr(404, 'Cliente no encontrado')
+  if (!arr[idx].esBox) throw httpErr(403, 'Solo un cliente marcado como "box" puede tener entrenadores')
+  const email = String(b.email || '').trim().toLowerCase()
+  if (!email) throw httpErr(400, 'El email es obligatorio')
+  if (!b.password) throw httpErr(400, 'La contraseña es obligatoria')
+  validarPasswordFuerte(b.password)
+  const enUso = arr.some(c => (c.email || '').toLowerCase() === email)
+    || arr.some(c => (c.credencialesExtra || []).some(cr => cr.email.toLowerCase() === email))
+  if (enUso) throw httpErr(409, 'Ese email ya está en uso')
+  const nueva = { id: genId(), email: String(b.email).trim(), password: hashPassword(b.password), activo: true, creadoEn: new Date().toISOString() }
+  arr[idx] = { ...arr[idx], credencialesExtra: [...(arr[idx].credencialesExtra || []), nueva] }
+  setCollection('im_clientes', arr)
+  return sinPassword(arr[idx])
+}
+function borrarCredencial(clienteId, credId) {
+  const arr = getCollection('im_clientes')
+  const idx = arr.findIndex(c => c.id === clienteId)
+  if (idx < 0) throw httpErr(404, 'Cliente no encontrado')
+  arr[idx] = { ...arr[idx], credencialesExtra: (arr[idx].credencialesExtra || []).filter(cr => cr.id !== credId) }
+  setCollection('im_clientes', arr)
+  return sinPassword(arr[idx])
+}
+
 // ── HTTP ──────────────────────────────────────────────────────────────────────
 function json(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)) }
 function readBody(req) {
@@ -498,10 +547,23 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/portal/login' && method === 'POST') {
       const b = await readBody(req)
       const id = String(b.identificador || '').trim()
-      const c = getCollection('im_clientes').find(x => x.activo && (x.email === id || x.username === id))
-      if (!c || !verifyPassword(b.password || '', c.password)) throw httpErr(401, 'Credenciales incorrectas o cliente inactivo')
-      const token = crearSesion('cliente', c.id, '')
-      return json(res, 200, { token, cliente: sinPassword(c) })
+      const idLower = id.toLowerCase()
+      const clientes = getCollection('im_clientes')
+      const c = clientes.find(x => x.activo && (x.email === id || x.username === id))
+      if (c && verifyPassword(b.password || '', c.password)) {
+        const token = crearSesion('cliente', c.id, '')
+        return json(res, 200, { token, cliente: sinPassword(c) })
+      }
+      // ¿Es la credencial de un entrenador de un box? Mismo acceso que el cliente principal.
+      for (const cli of clientes) {
+        if (!cli.activo || !cli.esBox) continue
+        const cred = (cli.credencialesExtra || []).find(cr => cr.activo && cr.email.toLowerCase() === idLower)
+        if (cred && verifyPassword(b.password || '', cred.password)) {
+          const token = crearSesion('cliente', cli.id, `cred:${cred.id}`)
+          return json(res, 200, { token, cliente: sinPassword(cli) })
+        }
+      }
+      throw httpErr(401, 'Credenciales incorrectas o cliente inactivo')
     }
 
     // ── Reset de contraseña olvidada (público) ──
@@ -616,8 +678,20 @@ const server = http.createServer(async (req, res) => {
       const arr = getCollection('im_clientes')
       const idx = arr.findIndex(c => c.id === ses.sujeto_id)
       if (idx < 0) throw httpErr(404, 'Cliente no encontrado')
-      if (!verifyPassword(actual, arr[idx].password)) throw httpErr(400, 'La contraseña actual no es correcta')
-      arr[idx] = { ...arr[idx], password: hashPassword(nueva) }
+      // Si la sesión es de un entrenador (credencial extra), cambia SU contraseña,
+      // no la del cliente principal del box.
+      const credId = String(ses.rol || '').startsWith('cred:') ? ses.rol.slice(5) : null
+      if (credId) {
+        const creds = arr[idx].credencialesExtra || []
+        const ci = creds.findIndex(cr => cr.id === credId)
+        if (ci < 0) throw httpErr(404, 'Credencial no encontrada')
+        if (!verifyPassword(actual, creds[ci].password)) throw httpErr(400, 'La contraseña actual no es correcta')
+        const nuevasCreds = [...creds]; nuevasCreds[ci] = { ...nuevasCreds[ci], password: hashPassword(nueva) }
+        arr[idx] = { ...arr[idx], credencialesExtra: nuevasCreds }
+      } else {
+        if (!verifyPassword(actual, arr[idx].password)) throw httpErr(400, 'La contraseña actual no es correcta')
+        arr[idx] = { ...arr[idx], password: hashPassword(nueva) }
+      }
       setCollection('im_clientes', arr)
       return json(res, 200, { ok: true })
     }
@@ -645,6 +719,18 @@ const server = http.createServer(async (req, res) => {
       } catch (e) { throw httpErr(502, 'No se pudo contactar con la tienda') }
       if (!wres.ok) throw httpErr(wres.status === 404 ? 404 : 502, data.error || 'No se pudo renovar')
       return json(res, 200, data) // { status: 'paid' } | { status: 'needs_action', payment_url }
+    }
+
+    // ── Portal cliente (box): gestionar sus propios entrenadores ──
+    if (p === '/api/portal/credenciales' && method === 'POST') {
+      if (ses.tipo !== 'cliente') throw httpErr(403, 'Solo clientes')
+      const b = await readBody(req)
+      return json(res, 201, agregarCredencial(ses.sujeto_id, b))
+    }
+    const credPortalDel = p.match(/^\/api\/portal\/credenciales\/([^/]+)$/)
+    if (credPortalDel && method === 'DELETE') {
+      if (ses.tipo !== 'cliente') throw httpErr(403, 'Solo clientes')
+      return json(res, 200, borrarCredencial(ses.sujeto_id, decodeURIComponent(credPortalDel[1])))
     }
 
     // ── Resto: solo staff ──
@@ -676,6 +762,16 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/clients' && method === 'POST') { if (!esAdmin) throw httpErr(403, 'Solo un administrador puede crear clientes'); return json(res, 201, domain.createClient(await readBody(req))) }
     const asg = p.match(/^\/api\/clients\/([^/]+)\/subscriptions$/)
     if (asg && method === 'POST') { if (!esAdmin) throw httpErr(403, 'Solo un administrador puede asignar productos'); return json(res, 201, domain.assignProduct(decodeURIComponent(asg[1]), await readBody(req))) }
+    const credAdmin = p.match(/^\/api\/clients\/([^/]+)\/credenciales$/)
+    if (credAdmin && method === 'POST') {
+      if (!esAdmin) throw httpErr(403, 'Solo un administrador puede añadir entrenadores')
+      return json(res, 201, agregarCredencial(decodeURIComponent(credAdmin[1]), await readBody(req)))
+    }
+    const credAdminDel = p.match(/^\/api\/clients\/([^/]+)\/credenciales\/([^/]+)$/)
+    if (credAdminDel && method === 'DELETE') {
+      if (!esAdmin) throw httpErr(403, 'Solo un administrador puede eliminar entrenadores')
+      return json(res, 200, borrarCredencial(decodeURIComponent(credAdminDel[1]), decodeURIComponent(credAdminDel[2])))
+    }
 
     json(res, 404, { error: 'no encontrado' })
   } catch (e) {

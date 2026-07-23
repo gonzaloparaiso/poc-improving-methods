@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, type FormEvent } from 'react'
-import { type Cliente, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente, type ContenidoItem, BASIC_PROGRAM_ID } from '../../types'
+import { type Cliente, type CredencialExtra, DIAS_SEMANA, CALENDAR_COLORS, type CalendarioCliente, type ContenidoItem, BASIC_PROGRAM_ID } from '../../types'
 import { useCalendarios, fmtFecha, addDays } from '../../context/CalendariosContext'
 import { useEjercicios } from '../../context/EjerciciosContext'
 import { useClientes, suscripcionVigente } from '../../context/ClientesContext'
@@ -10,9 +10,10 @@ import BloqueDetalleModal from './BloqueDetalleModal'
 import ContenidoSeccion from './ContenidoSeccion'
 import ContenidoDetalleModal from './ContenidoDetalleModal'
 import { exportarPDF, exportarExcel } from './exporters'
-import { apiPortalChangePassword, apiPortalRenew } from '../../lib/storage'
+import { apiPortalChangePassword, apiPortalRenew, apiPortalAddCredencial, apiPortalRemoveCredencial } from '../../lib/storage'
 import PasswordInput from '../../components/PasswordInput'
 import PasswordRequisitos from '../../components/PasswordRequisitos'
+import ConfirmDialog from '../../components/ConfirmDialog'
 import { errorPassword } from '../../lib/passwordPolicy'
 
 interface Props {
@@ -1186,9 +1187,136 @@ function CambiarPasswordModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// Gestión de entrenadores (credenciales extra de un box): mismo acceso que la
+// cuenta principal, pero con su propio email y contraseña.
+function EntrenadoresModal({ cliente, onClose }: { cliente: Cliente; onClose: () => void }) {
+  const [lista, setLista] = useState<CredencialExtra[]>(cliente.credencialesExtra ?? [])
+  const [nuevo, setNuevo] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmar, setConfirmar] = useState('')
+  const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const [aBorrar, setABorrar] = useState<CredencialExtra | null>(null)
+
+  const crear = async (e: FormEvent) => {
+    e.preventDefault()
+    setError('')
+    if (!email.trim()) return setError('El email es obligatorio')
+    const err = errorPassword(password)
+    if (err) return setError(err)
+    if (password !== confirmar) return setError('Las contraseñas no coinciden')
+    setGuardando(true)
+    try {
+      const actualizado = await apiPortalAddCredencial(email.trim(), password) as Cliente
+      setLista(actualizado.credencialesExtra ?? [])
+      setNuevo(false); setEmail(''); setPassword(''); setConfirmar('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo añadir el entrenador')
+    } finally {
+      setGuardando(false)
+    }
+  }
+  const eliminar = async (credId: string) => {
+    try {
+      const actualizado = await apiPortalRemoveCredencial(credId) as Cliente
+      setLista(actualizado.credencialesExtra ?? [])
+    } finally {
+      setABorrar(null)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="card w-full sm:max-w-md sm:rounded-xl rounded-t-2xl rounded-b-none sm:rounded-b-xl max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-6 border-b border-tn-border">
+          <div>
+            <h3 className="text-white font-bold text-lg">Entrenadores</h3>
+            <p className="text-tn-muted text-xs mt-0.5">Acceden con su propio email y la misma cuenta</p>
+          </div>
+          <button onClick={onClose} className="text-tn-muted hover:text-white p-1">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {!nuevo && (
+            <button type="button" onClick={() => setNuevo(true)} className="btn-secondary w-full flex items-center justify-center gap-2 text-sm py-2.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              Añadir entrenador
+            </button>
+          )}
+
+          {nuevo && (
+            <form onSubmit={crear} className="border border-tn-border rounded-xl p-4 space-y-3">
+              <div>
+                <label className="label">Email</label>
+                <input type="email" className="input-field" placeholder="entrenador@ejemplo.com" autoFocus
+                  value={email} onChange={e => setEmail(e.target.value)} required />
+              </div>
+              <div>
+                <label className="label">Contraseña</label>
+                <PasswordInput value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" />
+                <PasswordRequisitos password={password} />
+              </div>
+              <div>
+                <label className="label">Repetir contraseña</label>
+                <PasswordInput value={confirmar} onChange={e => setConfirmar(e.target.value)} autoComplete="new-password" />
+              </div>
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">{error}</div>
+              )}
+              <div className="flex gap-3 pt-1">
+                <button type="button" className="btn-secondary flex-1"
+                  onClick={() => { setNuevo(false); setError(''); setEmail(''); setPassword(''); setConfirmar('') }}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary flex-1" disabled={guardando}>
+                  {guardando ? 'Guardando...' : 'Añadir'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {lista.length === 0 ? (
+            <p className="text-tn-muted text-sm text-center py-4">Todavía no has añadido ningún entrenador.</p>
+          ) : (
+            <div className="divide-y divide-tn-border">
+              {lista.map(cr => (
+                <div key={cr.id} className="py-3 flex items-center justify-between gap-3">
+                  <p className="text-white text-sm font-semibold truncate">{cr.email}</p>
+                  <button type="button" onClick={() => setABorrar(cr)}
+                    className="p-1.5 text-tn-muted hover:text-red-400 transition-colors flex-shrink-0" title="Eliminar">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {aBorrar && (
+        <ConfirmDialog title="Eliminar entrenador"
+          description={`¿Eliminar el acceso de "${aBorrar.email}"?`}
+          confirmLabel="Eliminar"
+          onConfirm={() => void eliminar(aBorrar.id)}
+          onCancel={() => setABorrar(null)} />
+      )}
+    </div>
+  )
+}
+
 function Header({ cliente, onLogout }: { cliente: Cliente; onLogout: () => void }) {
   const [menu, setMenu] = useState(false)
   const [cambiarPass, setCambiarPass] = useState(false)
+  const [entrenadores, setEntrenadores] = useState(false)
   return (
     <header className="bg-tn-dark border-b border-tn-border px-4 lg:px-8 py-4 flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -1234,6 +1362,17 @@ function Header({ cliente, onLogout }: { cliente: Cliente; onLogout: () => void 
                 </svg>
                 Cambiar contraseña
               </button>
+              {cliente.esBox && (
+                <button
+                  onClick={() => { setMenu(false); setEntrenadores(true) }}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-tn-dark transition-colors text-left text-white text-sm"
+                >
+                  <svg className="w-4 h-4 text-tn-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M9 20H4v-2a3 3 0 015.356-1.857M9 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M13 7a3 3 0 11-6 0 3 3 0 016 0zm7 3a2 2 0 11-4 0 2 2 0 014 0zM6 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  Entrenadores
+                </button>
+              )}
               <button
                 onClick={onLogout}
                 className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-red-400/5 transition-colors text-left text-red-400 text-sm"
@@ -1250,6 +1389,7 @@ function Header({ cliente, onLogout }: { cliente: Cliente; onLogout: () => void 
       </div>
 
       {cambiarPass && <CambiarPasswordModal onClose={() => setCambiarPass(false)} />}
+      {entrenadores && <EntrenadoresModal cliente={cliente} onClose={() => setEntrenadores(false)} />}
     </header>
   )
 }

@@ -72,6 +72,12 @@ async function apiPost(path: string, body: unknown) {
   if (!res.ok) throw new Error((data as { error?: string }).error || 'Error en la operación')
   return data
 }
+async function apiDelete(path: string) {
+  const res = await fetch(`${API}${path}`, { method: 'DELETE', headers: authHeaders() })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as { error?: string }).error || 'Error en la operación')
+  return data
+}
 
 export const apiCreateUser    = (b: unknown) => apiPost('/users', b)
 export const apiCreateProduct = (b: unknown) => apiPost('/products', b)
@@ -103,6 +109,18 @@ export const apiStaffResetPassword = (token: string, nueva: string) =>
  *  Devuelve { status: 'paid' } o { status: 'needs_action', payment_url }. */
 export const apiPortalRenew = (catalogoId: string, mode: 'renew' | 'resubscribe' = 'renew') =>
   apiPost('/portal/renew', { catalogoId, mode }) as Promise<{ status: 'paid' | 'needs_action'; payment_url?: string }>
+
+/** Panel admin: añadir/eliminar una credencial extra ("entrenador") de un cliente box. */
+export const apiAddCredencialCliente = (clienteId: string, email: string, password: string) =>
+  apiPost(`/clients/${clienteId}/credenciales`, { email, password })
+export const apiRemoveCredencialCliente = (clienteId: string, credId: string) =>
+  apiDelete(`/clients/${clienteId}/credenciales/${credId}`)
+
+/** Portal cliente (box): gestionar sus propias credenciales extra ("entrenadores"). */
+export const apiPortalAddCredencial = (email: string, password: string) =>
+  apiPost('/portal/credenciales', { email, password })
+export const apiPortalRemoveCredencial = (credId: string) =>
+  apiDelete(`/portal/credenciales/${credId}`)
 
 
 /** Re-descarga los datos del servidor, reescribe la caché local y avisa a los

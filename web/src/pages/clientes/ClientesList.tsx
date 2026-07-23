@@ -145,7 +145,10 @@ export default function ClientesList() {
                         <div className="flex items-center gap-3">
                           <Avatar nombre={c.nombre} apellido={c.apellido} />
                           <div>
-                            <p className="text-white font-semibold text-sm group-hover:text-tn-yellow">{c.nombre} {c.apellido}</p>
+                            <p className="text-white font-semibold text-sm group-hover:text-tn-yellow flex items-center gap-1.5">
+                              {c.nombre} {c.apellido}
+                              {c.esBox && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-tn-yellow/10 text-tn-yellow">Box</span>}
+                            </p>
                             <p className="text-tn-muted text-xs font-mono">{c.email}</p>
                           </div>
                         </div>

@@ -11,7 +11,7 @@ interface Props {
 
 const empty = {
   nombre: '', apellido: '', email: '', password: '', passwordConfirm: '', activo: true,
-  telefono: '', direccion: '', dni: '',
+  telefono: '', direccion: '', dni: '', esBox: false,
   nif: '', razonSocial: '', direccionFacturacion: '', emailFacturacion: '',
 }
 
@@ -29,6 +29,7 @@ export default function ClienteModal({ cliente, onClose }: Props) {
           nombre: cliente.nombre, apellido: cliente.apellido, email: cliente.email,
           password: '', passwordConfirm: '', activo: cliente.activo,
           telefono: cliente.telefono ?? '', direccion: cliente.direccion ?? '', dni: cliente.dni ?? '',
+          esBox: cliente.esBox ?? false,
           nif: cliente.nif ?? '', razonSocial: cliente.razonSocial ?? '',
           direccionFacturacion: cliente.direccionFacturacion ?? '', emailFacturacion: cliente.emailFacturacion ?? '',
         }
@@ -65,6 +66,7 @@ export default function ClienteModal({ cliente, onClose }: Props) {
         username: form.email.trim().toLowerCase(),
         activo: form.activo,
         telefono: form.telefono.trim(), direccion: form.direccion.trim(), dni: form.dni.trim(),
+        esBox: form.esBox,
         nif: form.nif.trim(), razonSocial: form.razonSocial.trim(),
         direccionFacturacion: form.direccionFacturacion.trim(), emailFacturacion: form.emailFacturacion.trim(),
         ...(form.password ? { password: form.password } : {}),
@@ -135,6 +137,18 @@ export default function ClienteModal({ cliente, onClose }: Props) {
             <input type="text" className="input-field" placeholder="Calle, número, ciudad, CP"
               value={form.direccion} onChange={e => set('direccion', e.target.value)} />
           </div>
+
+          {/* Box */}
+          <label className="flex items-center gap-3 border border-tn-border rounded-xl px-4 py-3 cursor-pointer hover:border-tn-yellow/40 transition-colors">
+            <input type="checkbox" className="w-4 h-4 accent-tn-yellow"
+              checked={form.esBox} onChange={e => set('esBox', e.target.checked)} />
+            <div>
+              <p className="text-white text-sm font-semibold">Es un box</p>
+              <p className="text-tn-muted text-xs mt-0.5">
+                Podrá dar de alta entrenadores con su propio email y contraseña, con el mismo acceso que esta cuenta.
+              </p>
+            </div>
+          </label>
 
           {/* Contraseña */}
           <div className="border-t border-tn-border pt-4">

@@ -86,6 +86,17 @@ export interface ContactoCliente {
   notas: string
 }
 
+// Login extra de un cliente "box": mismo acceso que el cliente principal (misma
+// suscripción, mismos datos), solo que con su propio email+contraseña. Pensado
+// para entrenadores de un box que necesitan entrar sin compartir una cuenta.
+// El servidor nunca envía el campo password de estas credenciales al frontend.
+export interface CredencialExtra {
+  id: string
+  email: string
+  activo: boolean
+  creadoEn: string
+}
+
 export interface Cliente {
   id: string
   nombre: string
@@ -111,6 +122,11 @@ export interface Cliente {
 
   // Contactos asociados
   contactos?: ContactoCliente[]
+
+  // "Box": el cliente puede tener entrenadores con acceso propio (mismos
+  // permisos, misma suscripción) vía credenciales extra.
+  esBox?: boolean
+  credencialesExtra?: CredencialExtra[]
 }
 
 // ─── Suscripciones ────────────────────────────────────────────────────────────
