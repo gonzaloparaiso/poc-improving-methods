@@ -136,31 +136,30 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
     s.dias.some(d => d.fecha === hoyISO)
   )
 
-  // Si el cliente tiene respiraciones periódicas, se puede seguir avanzando en el
-  // calendario más allá de las semanas reales del programa (p. ej. "TN box" ya
-  // terminó) solo para poder verlas — no se guarda nada, se genera al vuelo.
-  const puedeExtenderCalendario = tieneAccesoContenido && periodicas.length > 0
+  // El calendario nunca "acaba": si el cliente navega con las flechas más allá de
+  // las semanas reales del programa (antes del inicio o después del fin de la
+  // suscripción), se generan semanas vacías al vuelo — no se guarda nada.
   const semanaVirtual = (idx: number): SemanaFusion => {
-    const base = semanas.length > 0
-      ? addDays(semanas[semanas.length - 1].fechaLunes, 7 * (idx - (semanas.length - 1)))
-      : addDays(lunesDe(hoyISO), 7 * idx)
+    const base = semanas.length === 0
+      ? addDays(lunesDe(hoyISO), 7 * idx)
+      : idx >= semanas.length
+        ? addDays(semanas[semanas.length - 1].fechaLunes, 7 * (idx - (semanas.length - 1)))
+        : addDays(semanas[0].fechaLunes, 7 * idx) // idx < 0
     return {
       fechaLunes: base,
       dias: DIAS_SEMANA.map((_, i) => ({ fecha: addDays(base, i), diaSemana: i, bloques: [] })),
     }
   }
-  const obtenerSemana = (idx: number): SemanaFusion | undefined =>
-    idx < 0 ? undefined : idx < semanas.length ? semanas[idx] : (puedeExtenderCalendario ? semanaVirtual(idx) : undefined)
+  const obtenerSemana = (idx: number): SemanaFusion =>
+    idx >= 0 && idx < semanas.length ? semanas[idx] : semanaVirtual(idx)
 
   // Vista "Todas": nº de semanas virtuales extra añadidas al final (en bloques de 4).
   const [semanasExtra, setSemanasExtra] = useState(0)
   const semanasTodas = useMemo<SemanaFusion[]>(() => [
     ...semanas,
-    ...(puedeExtenderCalendario
-      ? Array.from({ length: semanasExtra }, (_, k) => semanaVirtual(semanas.length + k))
-      : []),
+    ...Array.from({ length: semanasExtra }, (_, k) => semanaVirtual(semanas.length + k)),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [semanas, semanasExtra, puedeExtenderCalendario])
+  ], [semanas, semanasExtra])
 
   // Estado para vista día: índice de día seleccionado dentro de la semana
   const [diaIdx, setDiaIdx] = useState(0)
@@ -297,11 +296,12 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
           const esHoy = dia.fecha === hoyISO
           return (
             <div key={dia.fecha} className="flex flex-col gap-2">
-              <div className={`text-center rounded-lg py-2 ${esHoy ? 'bg-tn-yellow/10 border border-tn-yellow/30' : 'bg-tn-dark border border-tn-border'}`}>
-                <p className={`text-xs font-bold uppercase tracking-wider ${esHoy ? 'text-tn-yellow' : 'text-tn-muted'}`}>
+              {/* "Hoy" en blanco sólido a propósito: no coincide con ningún color de programa (amarillo/azul/morado/verde/naranja) */}
+              <div className={`text-center rounded-lg py-2 ${esHoy ? 'bg-white border border-white' : 'bg-tn-dark border border-tn-border'}`}>
+                <p className={`text-xs font-bold uppercase tracking-wider ${esHoy ? 'text-tn-black' : 'text-tn-muted'}`}>
                   {DIAS_SEMANA[dia.diaSemana].slice(0, 3)}
                 </p>
-                <p className={`text-sm font-black mt-0.5 ${esHoy ? 'text-tn-yellow' : 'text-white'}`}>
+                <p className={`text-sm font-black mt-0.5 ${esHoy ? 'text-tn-black' : 'text-white'}`}>
                   {new Date(dia.fecha + 'T00:00:00').getDate()}
                 </p>
               </div>
@@ -739,10 +739,9 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
               <button
                 onClick={() => {
                   if (diaIdx > 0) setDiaIdx(diaIdx - 1)
-                  else if (semanaIdx > 0) { setSemanaIdx(semanaIdx - 1); setDiaIdx(6) }
+                  else { setSemanaIdx(semanaIdx - 1); setDiaIdx(6) }
                 }}
-                disabled={diaIdx === 0 && semanaIdx === 0}
-                className="p-3 text-tn-muted hover:text-tn-yellow disabled:opacity-30 transition-colors"
+                className="p-3 text-tn-muted hover:text-tn-yellow transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -752,14 +751,16 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
               <div className="flex-1 text-center">
                 {semanaActual.dias[diaIdx] && (
                   <>
-                    <p className="text-tn-muted text-xs uppercase tracking-wider">
-                      Semana {semanaIdx + 1}
-                    </p>
+                    {semanaIdx >= 0 && semanaIdx < semanas.length && (
+                      <p className="text-tn-muted text-xs uppercase tracking-wider">
+                        Semana {semanaIdx + 1}
+                      </p>
+                    )}
                     <h2 className="text-white font-black text-xl capitalize mt-1">
                       {fmtFechaLarga(semanaActual.dias[diaIdx].fecha)}
                     </h2>
                     {semanaActual.dias[diaIdx].fecha === hoyISO && (
-                      <span className="inline-block mt-1 bg-tn-yellow text-tn-black text-xs font-bold px-2 py-0.5 rounded-full">
+                      <span className="inline-block mt-1 bg-white text-tn-black text-xs font-bold px-2 py-0.5 rounded-full">
                         HOY
                       </span>
                     )}
@@ -770,10 +771,9 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
               <button
                 onClick={() => {
                   if (diaIdx < 6) setDiaIdx(diaIdx + 1)
-                  else if (semanaIdx < semanas.length - 1 || puedeExtenderCalendario) { setSemanaIdx(semanaIdx + 1); setDiaIdx(0) }
+                  else { setSemanaIdx(semanaIdx + 1); setDiaIdx(0) }
                 }}
-                disabled={diaIdx === 6 && semanaIdx === semanas.length - 1 && !puedeExtenderCalendario}
-                className="p-3 text-tn-muted hover:text-tn-yellow disabled:opacity-30 transition-colors"
+                className="p-3 text-tn-muted hover:text-tn-yellow transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -812,29 +812,27 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
         {/* Vista SEMANA */}
         {vistaEfectiva === 'semana' && semanaActual && (
           <div className="space-y-4">
-            {/* Navegación semana a semana (permite avanzar más allá del programa si hay periódicas) */}
+            {/* Navegación semana a semana (el calendario continúa, aunque vacío, más allá del programa) */}
             <div className="flex items-center justify-between gap-3">
               <button
-                onClick={() => { if (semanaIdx > 0) setSemanaIdx(semanaIdx - 1) }}
-                disabled={semanaIdx === 0}
-                className="p-3 text-tn-muted hover:text-tn-yellow disabled:opacity-30 transition-colors"
+                onClick={() => setSemanaIdx(semanaIdx - 1)}
+                className="p-3 text-tn-muted hover:text-tn-yellow transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
               <div className="flex-1 text-center">
-                <p className="text-tn-muted text-xs uppercase tracking-wider">Semana {semanaIdx + 1}</p>
+                {semanaIdx >= 0 && semanaIdx < semanas.length && (
+                  <p className="text-tn-muted text-xs uppercase tracking-wider">Semana {semanaIdx + 1}</p>
+                )}
                 <h2 className="text-white font-black text-lg mt-0.5">
                   {fmtFecha(semanaActual.fechaLunes)} → {fmtFecha(addDays(semanaActual.fechaLunes, 6))}
                 </h2>
               </div>
               <button
-                onClick={() => {
-                  if (semanaIdx < semanas.length - 1 || puedeExtenderCalendario) setSemanaIdx(semanaIdx + 1)
-                }}
-                disabled={semanaIdx === semanas.length - 1 && !puedeExtenderCalendario}
-                className="p-3 text-tn-muted hover:text-tn-yellow disabled:opacity-30 transition-colors"
+                onClick={() => setSemanaIdx(semanaIdx + 1)}
+                className="p-3 text-tn-muted hover:text-tn-yellow transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -876,38 +874,36 @@ export default function PortalCliente({ cliente, onLogout }: Props) {
                     </span>
                     <div className="flex-1 h-px bg-tn-border" />
                     <span className="text-tn-muted text-xs whitespace-nowrap">
-                      {esVirtual ? 'solo respiraciones' : `${s.dias.reduce((a, d) => a + d.bloques.length, 0)} bloques`}
+                      {esVirtual ? 'sin planificación' : `${s.dias.reduce((a, d) => a + d.bloques.length, 0)} bloques`}
                     </span>
                   </div>
                   {renderSemanaGrid(s)}
                 </div>
               )
             })}
-            {/* Cargar / ocultar 4 semanas más (solo si hay respiraciones periódicas que mostrar) */}
-            {puedeExtenderCalendario && (
-              <div className="flex items-center justify-center gap-3 pt-2">
-                {semanasExtra > 0 && (
-                  <button
-                    onClick={() => setSemanasExtra(n => Math.max(0, n - 4))}
-                    className="btn-secondary flex items-center gap-2 text-sm py-2 px-4"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                    Mostrar menos
-                  </button>
-                )}
+            {/* Cargar / ocultar 4 semanas más allá del programa (siempre disponible) */}
+            <div className="flex items-center justify-center gap-3 pt-2">
+              {semanasExtra > 0 && (
                 <button
-                  onClick={() => setSemanasExtra(n => n + 4)}
+                  onClick={() => setSemanasExtra(n => Math.max(0, n - 4))}
                   className="btn-secondary flex items-center gap-2 text-sm py-2 px-4"
                 >
-                  Ver 4 semanas más
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                   </svg>
+                  Mostrar menos
                 </button>
-              </div>
-            )}
+              )}
+              <button
+                onClick={() => setSemanasExtra(n => n + 4)}
+                className="btn-secondary flex items-center gap-2 text-sm py-2 px-4"
+              >
+                Ver 4 semanas más
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
 
