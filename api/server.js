@@ -464,13 +464,21 @@ const server = http.createServer(async (req, res) => {
     // ── Webhook de WooCommerce (sincroniza acceso del portal) ──
     if (p === '/api/wc/webhook' && method === 'POST') {
       const raw = await readRawBody(req)
+      const topic = String(req.headers['x-wc-webhook-topic'] || '')
+      const deliveryId = req.headers['x-wc-webhook-delivery-id'] || req.headers['x-wc-webhook-id'] || ''
       if (!WC_WEBHOOK.secret) return json(res, 503, { error: 'webhook no configurado' })
       const sig = req.headers['x-wc-webhook-signature'] || ''
       const expected = crypto.createHmac('sha256', WC_WEBHOOK.secret).update(raw, 'utf8').digest('base64')
       const a = Buffer.from(String(sig)); const b2 = Buffer.from(expected)
-      if (a.length !== b2.length || !crypto.timingSafeEqual(a, b2)) return json(res, 401, { error: 'firma inválida' })
+      if (a.length !== b2.length || !crypto.timingSafeEqual(a, b2)) {
+        // Log mínimo (sin payload: la firma no es de fiar) para poder diagnosticar
+        // webhooks duplicados/mal configurados en WooCommerce.
+        console.warn(`[wc-webhook] firma inválida — topic=${topic} delivery=${deliveryId} bytes=${raw.length}`)
+        return json(res, 401, { error: 'firma inválida' })
+      }
+      // Firma verificada: seguro loguear el payload completo para depurar la integración.
+      console.log(`[wc-webhook] recibido — topic=${topic} delivery=${deliveryId}\n${raw}`)
       let payload; try { payload = JSON.parse(raw) } catch { return json(res, 200, { ok: true, ignored: 'sin_payload' }) }
-      const topic = String(req.headers['x-wc-webhook-topic'] || '')
       if (topic.startsWith('subscription')) {
         try { return json(res, 200, { ok: true, ...syncDesdeWC(payload) }) }
         catch (e) { console.error('[wc-webhook]', e.message); return json(res, 200, { ok: false, error: 'proc' }) }
