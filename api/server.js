@@ -55,6 +55,9 @@ const BASIC_PROGRAM_ID = '__basic__'
 // Nombre exacto del producto/suscripción "TN BOX" — debe coincidir tal cual con
 // el nombre del producto en WooCommerce y con el nombre de la suscripción en el catálogo.
 const TN_BOX_NOMBRE = 'TN BOX'
+// Textos de bienvenida por defecto — se usan si una suscripción no tiene los suyos propios editados.
+const MENSAJE_BIENVENIDA_EMAIL_DEFAULT = 'Hola{nombre}, ¡bienvenido/a a Training Norte! Ya tienes acceso a tu aplicación.'
+const MENSAJE_BIENVENIDA_WHATSAPP_DEFAULT = '¡Hola{nombre}! Bienvenido/a a Training Norte 💪 Ya tienes acceso a tu app.'
 
 const ROLES = ['administrador', 'head_coach', 'coach']
 const TIPOS = ['recurrente', 'unico']
@@ -285,9 +288,15 @@ function emailResetHtml({ nombre, link, logoUrl }) {
 </div>`
 }
 
-// Plantilla de bienvenida (alta nueva o primera compra de TN BOX).
-// Texto genérico de momento — pendiente de copy definitivo.
-function emailBienvenidaHtml({ nombre, logoUrl }) {
+// Sustituye el placeholder "{nombre}" del mensaje de bienvenida configurado en la
+// suscripción (o del texto por defecto) por " <nombre del cliente>" (o nada si no hay nombre).
+function interpolarMensaje(plantilla, nombre) {
+  return String(plantilla || '').replace(/\{nombre\}/g, nombre ? ` ${nombre}` : '')
+}
+
+// Plantilla HTML del email de bienvenida — el texto en sí (mensaje) se edita por
+// suscripción en el catálogo (Suscripciones, en el panel de administradores).
+function emailBienvenidaHtml({ mensaje, logoUrl }) {
   return `
 <div style="background:#f4f4f5;padding:32px 16px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
   <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:16px;padding:36px 32px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
@@ -295,10 +304,7 @@ function emailBienvenidaHtml({ nombre, logoUrl }) {
       <img src="${logoUrl}" alt="Training Norte" width="72" height="72" style="border-radius:50%;display:inline-block" />
     </div>
     <h2 style="color:#111111;margin:0 0 6px;font-size:20px;text-align:center">¡Bienvenido/a a Training Norte!</h2>
-    <p style="color:#6b7280;margin:0 0 24px;font-size:13px;text-align:center;text-transform:uppercase;letter-spacing:0.05em;font-weight:600">TN BOX</p>
-    <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px">
-      Hola${nombre ? ' ' + nombre : ''}, ya tienes acceso a tu <strong>aplicación de Training Norte</strong>. Estamos encantados de tenerte con nosotros.
-    </p>
+    <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;white-space:pre-line">${mensaje}</p>
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px" />
     <p style="color:#6b7280;font-size:13px;line-height:1.5;margin:0 0 8px">
       ¿Tienes algún problema? Escríbenos a <a href="mailto:soporte@academiatn.com" style="color:#111111;font-weight:600">soporte@academiatn.com</a> y te ayudamos encantados.
@@ -307,9 +313,10 @@ function emailBienvenidaHtml({ nombre, logoUrl }) {
 </div>`
 }
 
-// WhatsApp de bienvenida — placeholder hasta integrar Whapi.
-function enviarWhatsappBienvenida(cliente) {
-  console.log(`[whatsapp] TODO integrar Whapi — bienvenida pendiente de enviar a ${cliente.telefono || '(sin teléfono)'} (${cliente.email})`)
+// WhatsApp de bienvenida — placeholder hasta integrar Whapi. El texto se edita por
+// suscripción en el catálogo (Suscripciones, en el panel de administradores).
+function enviarWhatsappBienvenida(cliente, mensaje) {
+  console.log(`[whatsapp] TODO integrar Whapi — pendiente de enviar a ${cliente.telefono || '(sin teléfono)'} (${cliente.email}): "${mensaje}"`)
 }
 
 async function sendMail({ to, subject, html }) {
@@ -393,7 +400,12 @@ const domain = {
     }) : []
     const cat = getCollection('im_suscripciones_catalogo')
     const wcProductId = (b.wcProductId === '' || b.wcProductId == null) ? null : (Number(b.wcProductId) || null)
-    const nuevo = { id: genId(), nombre: String(b.nombre).trim(), tipo, programas, precioMensual: Number(b.precioMensual) || 0, primerMesPrueba: b.primerMesPrueba === true, wcProductId, creadoEn: new Date().toISOString() }
+    const nuevo = {
+      id: genId(), nombre: String(b.nombre).trim(), tipo, programas, precioMensual: Number(b.precioMensual) || 0,
+      primerMesPrueba: b.primerMesPrueba === true, wcProductId, creadoEn: new Date().toISOString(),
+      mensajeBienvenidaEmail: String(b.mensajeBienvenidaEmail ?? '').trim(),
+      mensajeBienvenidaWhatsapp: String(b.mensajeBienvenidaWhatsapp ?? '').trim(),
+    }
     setCollection('im_suscripciones_catalogo', [...cat, nuevo])
     return nuevo
   },
@@ -576,10 +588,12 @@ async function procesarOrdenWC(order, { base }) {
   // establecer contraseña (solo si el cliente es nuevo, aún no tiene cuenta creada antes).
   const esAltaComercial = clienteNuevo || (creadoViaCheckout && esPrimeraBoxDeEsteCliente)
   if (esAltaComercial) {
-    const htmlBienvenida = emailBienvenidaHtml({ nombre: cliente.nombre, logoUrl: `${base}/tn-logo-email.png` })
+    const mensajeEmail = interpolarMensaje(producto.mensajeBienvenidaEmail || MENSAJE_BIENVENIDA_EMAIL_DEFAULT, cliente.nombre)
+    const mensajeWhatsapp = interpolarMensaje(producto.mensajeBienvenidaWhatsapp || MENSAJE_BIENVENIDA_WHATSAPP_DEFAULT, cliente.nombre)
+    const htmlBienvenida = emailBienvenidaHtml({ mensaje: mensajeEmail, logoUrl: `${base}/tn-logo-email.png` })
     sendMail({ to: cliente.email, subject: '¡Bienvenido/a a Training Norte!', html: htmlBienvenida })
       .catch(err => console.warn('[email] no se pudo enviar la bienvenida:', err.message))
-    enviarWhatsappBienvenida(cliente)
+    enviarWhatsappBienvenida(cliente, mensajeWhatsapp)
 
     if (clienteNuevo) {
       db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ? AND tipo = 'cliente'`).run(cliente.id)

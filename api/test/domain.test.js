@@ -379,6 +379,24 @@ function ordenTnBox(overrides = {}) {
   }
 }
 
+test('crear producto: guarda los mensajes de bienvenida (email/WhatsApp) y se pueden editar después', async () => {
+  const token = await adminToken()
+  const prod = await api('POST', '/products', {
+    token, body: { nombre: 'Plan Bienvenida', tipo: 'recurrente', programas: [], mensajeBienvenidaEmail: 'Hola{nombre}, custom email', mensajeBienvenidaWhatsapp: 'Hola{nombre}, custom whatsapp' },
+  })
+  assert.equal(prod.status, 201)
+  assert.equal(prod.data.mensajeBienvenidaEmail, 'Hola{nombre}, custom email')
+  assert.equal(prod.data.mensajeBienvenidaWhatsapp, 'Hola{nombre}, custom whatsapp')
+
+  // Editar (round-trip por el KV genérico del panel)
+  const cat = await api('GET', '/data/im_suscripciones_catalogo', { token })
+  const actualizado = cat.data.map(c => c.id === prod.data.id ? { ...c, mensajeBienvenidaEmail: 'Editado' } : c)
+  const put = await api('PUT', '/data/im_suscripciones_catalogo', { token, body: actualizado })
+  assert.equal(put.status, 200)
+  const catDespues = await api('GET', '/data/im_suscripciones_catalogo', { token })
+  assert.equal(catDespues.data.find(c => c.id === prod.data.id).mensajeBienvenidaEmail, 'Editado')
+})
+
 test('webhook WC (order): cliente nuevo compra TN BOX → se crea sin contraseña y con la suscripción asignada', async () => {
   const token = await adminToken()
   await api('POST', '/products', { token, body: { nombre: 'TN BOX', tipo: 'recurrente', programas: [] } })

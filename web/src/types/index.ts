@@ -163,7 +163,14 @@ export interface CatalogoSuscripcion {
   primerMesPrueba: boolean        // true = el primer mes no se cobra
   creadoEn: string
   wcProductId?: number | null     // ID del producto en WooCommerce (para renovar)
+  // Mensajes de bienvenida al dar de alta a un cliente con esta suscripción (email/WhatsApp).
+  // Admiten "{nombre}" como placeholder. Si están vacíos, se usa un texto genérico por defecto.
+  mensajeBienvenidaEmail?: string
+  mensajeBienvenidaWhatsapp?: string
 }
+
+export const MENSAJE_BIENVENIDA_EMAIL_DEFAULT = 'Hola{nombre}, ¡bienvenido/a a Training Norte! Ya tienes acceso a tu aplicación.'
+export const MENSAJE_BIENVENIDA_WHATSAPP_DEFAULT = '¡Hola{nombre}! Bienvenido/a a Training Norte 💪 Ya tienes acceso a tu app.'
 
 export interface SuscripcionCliente {
   id: string
