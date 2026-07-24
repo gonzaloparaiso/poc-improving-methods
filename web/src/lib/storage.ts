@@ -3,6 +3,7 @@
 // llevan el token. Los tokens siguen en sessionStorage (son pequeños y de sesión).
 
 import * as kv from './kv'
+import { type PedidoPendiente } from '../types'
 
 const API = '/api'
 
@@ -120,6 +121,19 @@ export const apiStaffResetPassword = (token: string, nueva: string) =>
 /** Envía el mensaje de bienvenida (email) que se está editando a una dirección de prueba, sin guardarlo. */
 export const apiTestBienvenidaEmail = (to: string, mensaje: string) =>
   apiPost('/staff/test-bienvenida-email', { to, mensaje })
+
+/** Pedidos de WooCommerce cuyo pago nunca llegó a confirmarse (el cliente se quedó sin acceso). */
+export async function apiPedidosPendientes(): Promise<PedidoPendiente[]> {
+  const res = await fetch(`${API}/wc/pedidos-pendientes`, { headers: authHeaders() })
+  if (!res.ok) throw new Error('No se pudieron cargar los pedidos')
+  return res.json()
+}
+/** Da de alta a mano un pedido atascado (el admin ha confirmado en la tienda que está pagado). */
+export const apiProcesarPedidoPendiente = (wcOrderId: string) =>
+  apiPost(`/wc/pedidos-pendientes/${encodeURIComponent(wcOrderId)}/procesar`, {})
+/** Descarta un pedido atascado (carrito abandonado, pago fallido...). No se borra: queda registrado. */
+export const apiDescartarPedidoPendiente = (wcOrderId: string) =>
+  apiPost(`/wc/pedidos-pendientes/${encodeURIComponent(wcOrderId)}/descartar`, {})
 
 /** Renueva (mode 'renew') o reactiva creando una nueva suscripción
  *  (mode 'resubscribe') en WooCommerce, cobrando al método guardado.

@@ -181,6 +181,25 @@ export interface CatalogoSuscripcion {
   imagenBienvenidaWhatsapp?: string
 }
 
+/** Pedido de WooCommerce cuyo pago nunca llegó a confirmarse: entró la compra pero el
+ *  cliente se quedó sin acceso. Se revisan a mano desde Suscripciones → Pedidos atascados. */
+export interface PedidoPendiente {
+  wcOrderId: string
+  motivo: string
+  origen: string
+  creadoEn: number
+  actualizadoEn: number
+  status: string
+  total: string | null
+  moneda: string
+  email: string
+  nombre: string
+  telefono: string
+  lineas: { nombre: string; productId: number | null }[]
+  /** Suscripción del catálogo a la que corresponde (resuelta por origen + ID de WooCommerce) */
+  productoPortal: { id: string; nombre: string; activo: boolean } | null
+}
+
 export const MENSAJE_BIENVENIDA_EMAIL_DEFAULT = 'Hola{nombre}, ¡bienvenido/a a Training Norte! Ya tienes acceso a tu aplicación.'
 export const MENSAJE_BIENVENIDA_WHATSAPP_DEFAULT = '¡Hola{nombre}! Bienvenido/a a Training Norte 💪 Ya tienes acceso a tu app.'
 

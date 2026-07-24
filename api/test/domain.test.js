@@ -490,6 +490,83 @@ test('webhook WC (order): producto desactivado o desconocido se ignora', async (
   assert.equal(inactivo.data.ignored, 'producto_no_en_catalogo')
 })
 
+test('webhook WC (order): un mismo pedido NO se procesa dos veces aunque WooCommerce mande más eventos', async () => {
+  const token = await adminToken()
+  const email = 'idempotente@test.com'
+  const orden = ordenTnBox(70001, { id: 555001, billing: { email, first_name: 'Idem', last_name: '', phone: '' } })
+
+  const primera = await postWebhook(orden, { topic: 'order.created' })
+  assert.equal(primera.data.clienteNuevo, true)
+
+  // WooCommerce vuelve a mandar el mismo pedido (order.updated se dispara con cualquier cambio)
+  const segunda = await postWebhook(orden, { topic: 'order.updated' })
+  assert.equal(segunda.data.ignored, 'ya_procesado', 'el segundo evento del mismo pedido se descarta')
+
+  const clientes = await api('GET', '/data/im_clientes', { token })
+  const cli = clientes.data.find(c => c.email === email)
+  const subs = await api('GET', '/data/im_suscripciones_clientes', { token })
+  const suyas = subs.data.filter(s => s.clienteId === cli.id)
+  assert.equal(suyas.length, 1, 'no se duplica la suscripción')
+})
+
+test('pedidos atascados: el pedido sin pagar aparece en la lista y desaparece cuando llega el pago', async () => {
+  const token = await adminToken()
+  const email = 'pagollega@test.com'
+  const sinPagar = ordenTnBox(70001, { id: 555002, status: 'pending', billing: { email, first_name: 'Pago', last_name: 'Llega', phone: '' } })
+
+  await postWebhook(sinPagar, { topic: 'order.created' })
+  const listaAntes = await api('GET', '/wc/pedidos-pendientes', { token })
+  assert.equal(listaAntes.status, 200)
+  const atascado = listaAntes.data.find(p => p.wcOrderId === '555002')
+  assert.ok(atascado, 'el pedido sin pagar sale en la lista de atascados')
+  assert.equal(atascado.email, email)
+  assert.equal(atascado.productoPortal.nombre, 'TN BOX', 'se resuelve el producto por ID de WooCommerce')
+
+  // El banco confirma: WooCommerce manda order.updated con el pago hecho
+  await postWebhook({ ...sinPagar, status: 'completed' }, { topic: 'order.updated' })
+  const listaDespues = await api('GET', '/wc/pedidos-pendientes', { token })
+  assert.ok(!listaDespues.data.some(p => p.wcOrderId === '555002'), 'ya no está atascado: se procesó solo')
+
+  const clientes = await api('GET', '/data/im_clientes', { token })
+  assert.ok(clientes.data.some(c => c.email === email), 'y el cliente quedó dado de alta')
+})
+
+test('pedidos atascados: un administrador puede darlo de alta a mano tras confirmarlo en la tienda', async () => {
+  const token = await adminToken()
+  const email = 'atascado@test.com'
+  await postWebhook(ordenTnBox(70001, { id: 555003, status: 'on-hold', billing: { email, first_name: 'Atas', last_name: 'Cado', phone: '' } }), { topic: 'order.created' })
+
+  const procesar = await api('POST', '/wc/pedidos-pendientes/555003/procesar', { token })
+  assert.equal(procesar.status, 200)
+  assert.equal(procesar.data.clienteNuevo, true)
+
+  const clientes = await api('GET', '/data/im_clientes', { token })
+  assert.ok(clientes.data.some(c => c.email === email), 'el cliente quedó dado de alta')
+  const lista = await api('GET', '/wc/pedidos-pendientes', { token })
+  assert.ok(!lista.data.some(p => p.wcOrderId === '555003'), 'sale de la lista de atascados')
+
+  // Y no se puede volver a procesar
+  const otraVez = await api('POST', '/wc/pedidos-pendientes/555003/procesar', { token })
+  assert.equal(otraVez.status, 409)
+})
+
+test('pedidos atascados: se pueden descartar, y solo un administrador puede gestionarlos', async () => {
+  const token = await adminToken()
+  await postWebhook(ordenTnBox(70001, { id: 555004, status: 'failed', billing: { email: 'descartar@test.com', first_name: 'Des', last_name: '', phone: '' } }), { topic: 'order.created' })
+
+  const descartar = await api('POST', '/wc/pedidos-pendientes/555004/descartar', { token })
+  assert.equal(descartar.status, 200)
+  const lista = await api('GET', '/wc/pedidos-pendientes', { token })
+  assert.ok(!lista.data.some(p => p.wcOrderId === '555004'), 'sale de la lista al descartarlo')
+
+  // Un pedido descartado tampoco se puede procesar luego
+  const procesar = await api('POST', '/wc/pedidos-pendientes/555004/procesar', { token })
+  assert.equal(procesar.status, 409)
+
+  const sinToken = await api('POST', '/wc/pedidos-pendientes/555004/descartar')
+  assert.equal(sinToken.status, 401)
+})
+
 // ── Webhook de WooCommerce: productos (altas/modificaciones del catálogo) ────
 test('webhook WC (product.created): crea la suscripción en el catálogo, identificada por el ID de WooCommerce', async () => {
   const token = await adminToken()

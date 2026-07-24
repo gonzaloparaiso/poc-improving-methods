@@ -81,12 +81,21 @@ db.exec(`CREATE TABLE IF NOT EXISTS "${OBJECT_KEY}" (tarea_id TEXT PRIMARY KEY, 
 db.exec(`CREATE TABLE IF NOT EXISTS _meta (k TEXT PRIMARY KEY, v TEXT)`)
 db.exec(`CREATE TABLE IF NOT EXISTS _sessions (token TEXT PRIMARY KEY, tipo TEXT, sujeto_id TEXT, rol TEXT, expira INTEGER)`)
 db.exec(`CREATE TABLE IF NOT EXISTS _password_resets (token TEXT PRIMARY KEY, cliente_id TEXT, expira INTEGER)`)
-// Pedidos de WooCommerce que no llegaron con status "completed" (pago aún no confirmado
-// por el banco) — se guardan para reintentarlos más adelante en vez de descartarlos.
+// Registro de pedidos de WooCommerce vistos, con su estado:
+//  - 'pendiente'  : llegó sin pagar (el banco aún no ha confirmado). Se guarda el payload
+//                   para poder darlo de alta cuando se confirme, sin perder la compra.
+//  - 'procesado'  : ya se le dio acceso al cliente. Sirve para NO volver a procesarlo:
+//                   WooCommerce dispara order.updated con cualquier cambio del pedido, y sin
+//                   esto la fecha de validez de la suscripción se recalcularía en cada evento.
+//  - 'descartado' : marcado a mano en el panel (carrito abandonado, pago fallido...).
+// Nada se borra nunca: la tabla es también el histórico de lo que ha entrado.
 db.exec(`CREATE TABLE IF NOT EXISTS _wc_pedidos_pendientes (wc_order_id TEXT PRIMARY KEY, motivo TEXT, payload TEXT NOT NULL, creado_en INTEGER, actualizado_en INTEGER)`)
 // "tipo" distingue resets de cliente (im_clientes) vs staff (im_users); las filas
 // ya existentes en producción se tratan como 'cliente' (comportamiento previo).
 try { db.exec(`ALTER TABLE _password_resets ADD COLUMN tipo TEXT NOT NULL DEFAULT 'cliente'`) } catch { /* ya existe */ }
+// Las filas que ya existieran se quedan como 'pendiente' (que es lo que eran).
+try { db.exec(`ALTER TABLE _wc_pedidos_pendientes ADD COLUMN estado TEXT NOT NULL DEFAULT 'pendiente'`) } catch { /* ya existe */ }
+try { db.exec(`ALTER TABLE _wc_pedidos_pendientes ADD COLUMN origen TEXT NOT NULL DEFAULT ''`) } catch { /* ya existe */ }
 
 function getCollection(key) {
   if (key === OBJECT_KEY) {
@@ -568,17 +577,38 @@ function syncDesdeWC(sub, origen) {
   return { cliente: cliente.id, productos: matched, activa, fechaFin, calendarios: calsChanged }
 }
 
-// Guarda un pedido de WooCommerce que aún no está pagado (status != completed) para
-// poder reintentarlo más adelante en vez de descartarlo (el banco a veces tarda en confirmar).
-function guardarPedidoPendiente(order, motivo) {
+// Guarda un pedido de WooCommerce que aún no está pagado (status != completed) para poder
+// darlo de alta cuando se confirme, en vez de perderlo. Lo normal es que WooCommerce mande
+// después un order.updated con el pago y se procese solo; los que se quedan aquí son los que
+// nunca llegaron a confirmarse, y se revisan a mano desde el panel.
+function guardarPedidoPendiente(order, motivo, origen) {
   const id = String(order.id ?? order.order_id ?? '')
   if (!id) return
   const ahora = Date.now()
   db.prepare(`
-    INSERT INTO _wc_pedidos_pendientes (wc_order_id, motivo, payload, creado_en, actualizado_en)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO _wc_pedidos_pendientes (wc_order_id, motivo, payload, creado_en, actualizado_en, estado, origen)
+    VALUES (?, ?, ?, ?, ?, 'pendiente', ?)
     ON CONFLICT(wc_order_id) DO UPDATE SET motivo = excluded.motivo, payload = excluded.payload, actualizado_en = excluded.actualizado_en
-  `).run(id, motivo, JSON.stringify(order), ahora, ahora)
+    WHERE _wc_pedidos_pendientes.estado = 'pendiente'
+  `).run(id, motivo, JSON.stringify(order), ahora, ahora, origen || '')
+}
+
+// Marca un pedido como ya procesado (se le dio acceso al cliente). Es lo que impide que
+// WooCommerce lo procese dos veces: order.updated se dispara con cualquier cambio del pedido.
+function marcarPedidoProcesado(order, origen) {
+  const id = String(order.id ?? order.order_id ?? '')
+  if (!id) return
+  const ahora = Date.now()
+  db.prepare(`
+    INSERT INTO _wc_pedidos_pendientes (wc_order_id, motivo, payload, creado_en, actualizado_en, estado, origen)
+    VALUES (?, '', ?, ?, ?, 'procesado', ?)
+    ON CONFLICT(wc_order_id) DO UPDATE SET estado = 'procesado', motivo = '', actualizado_en = excluded.actualizado_en
+  `).run(id, JSON.stringify(order), ahora, ahora, origen || '')
+}
+
+function estadoPedido(orderId) {
+  const row = db.prepare(`SELECT estado FROM _wc_pedidos_pendientes WHERE wc_order_id = ?`).get(String(orderId))
+  return row ? row.estado : null
 }
 
 // ── Procesa un pedido de WooCommerce (alta nueva o renovación de una suscripción) ──
@@ -586,11 +616,19 @@ function guardarPedidoPendiente(order, motivo) {
 // nunca por el nombre. Distingue alta nueva de renovación por order.created_via:
 // 'checkout' = compra nueva (checkout manual), 'subscription' = renovación automática
 // de WC Subscriptions. Solo se procesa si order.status === 'completed'; si no, se
-// guarda para reintentar. Los pedidos de un producto desactivado se ignoran.
-async function procesarOrdenWC(order, { base, origen }) {
+// guarda como pendiente. Los pedidos de un producto desactivado se ignoran.
+//
+// Un pedido solo se procesa UNA vez: WooCommerce dispara order.updated con cualquier cambio
+// del pedido, y sin esa protección la fecha de validez se recalcularía en cada evento
+// (alargando la suscripción sola). "forzar" lo activa un administrador desde el panel para
+// dar de alta un pedido que se quedó atascado y que él ha confirmado como pagado en la tienda.
+async function procesarOrdenWC(order, { base, origen, forzar = false }) {
+  const orderId = String(order.id ?? order.order_id ?? '')
+  if (orderId && estadoPedido(orderId) === 'procesado') return { ignored: 'ya_procesado', orderId }
+
   const status = String(order.status || '')
-  if (status !== 'completed') {
-    guardarPedidoPendiente(order, `status_${status || 'desconocido'}`)
+  if (status !== 'completed' && !forzar) {
+    guardarPedidoPendiente(order, `status_${status || 'desconocido'}`, origen)
     return { ignored: 'pago_no_confirmado', status }
   }
 
@@ -681,7 +719,50 @@ async function procesarOrdenWC(order, { base, origen }) {
     }
   }
 
+  // Queda registrado como procesado: sale de la lista de pendientes (si estaba) y no se
+  // volverá a procesar aunque WooCommerce mande más eventos de este mismo pedido.
+  marcarPedidoProcesado(order, origen)
+
   return { cliente: cliente.id, clienteNuevo, altaComercial: esAltaComercial, fechaFin: finISO }
+}
+
+// ── Pedidos atascados (panel) ─────────────────────────────────────────────────
+// Los que quedan en 'pendiente' son pedidos cuyo pago nunca llegó a confirmarse: entró la
+// compra pero el cliente se quedó sin acceso. Se revisan a mano desde Suscripciones.
+function listarPedidosPendientes() {
+  const filas = db.prepare(`SELECT * FROM _wc_pedidos_pendientes WHERE estado = 'pendiente' ORDER BY creado_en DESC`).all()
+  const catalogo = getCollection('im_suscripciones_catalogo')
+  return filas.map(f => {
+    let order = {}
+    try { order = JSON.parse(f.payload) } catch { /* payload corrupto: se muestra lo que haya */ }
+    const billing = order.billing || {}
+    const productIds = (order.line_items || []).map(li => li.product_id).filter(Boolean)
+    const producto = catalogo.find(c => c.wcProductId != null && productIds.includes(c.wcProductId) && origenCompatible(c.origen, f.origen))
+    return {
+      wcOrderId: f.wc_order_id,
+      motivo: f.motivo,
+      origen: f.origen,
+      creadoEn: f.creado_en,
+      actualizadoEn: f.actualizado_en,
+      status: String(order.status || ''),
+      total: order.total ?? null,
+      moneda: order.currency ?? '',
+      email: String(billing.email || ''),
+      nombre: [billing.first_name, billing.last_name].filter(Boolean).join(' ').trim(),
+      telefono: String(billing.phone || ''),
+      // Nombre tal cual venía en el pedido (informativo); el matching real es por ID
+      lineas: (order.line_items || []).map(li => ({ nombre: String(li.name || ''), productId: li.product_id ?? null })),
+      productoPortal: producto ? { id: producto.id, nombre: producto.nombre, activo: producto.activo !== false } : null,
+    }
+  })
+}
+
+function descartarPedido(orderId) {
+  const row = db.prepare(`SELECT * FROM _wc_pedidos_pendientes WHERE wc_order_id = ?`).get(String(orderId))
+  if (!row) throw httpErr(404, 'Pedido no encontrado')
+  if (row.estado !== 'pendiente') throw httpErr(409, `El pedido ya está ${row.estado}`)
+  db.prepare(`UPDATE _wc_pedidos_pendientes SET estado = 'descartado', actualizado_en = ? WHERE wc_order_id = ?`).run(Date.now(), String(orderId))
+  return { ok: true, wcOrderId: String(orderId), estado: 'descartado' }
 }
 
 // ── Credenciales extra de un box (entrenadores con el mismo acceso) ───────────
@@ -1033,6 +1114,26 @@ const server = http.createServer(async (req, res) => {
       catch (e) { throw httpErr(502, e.message || 'No se pudo enviar el email de prueba') }
       return json(res, 200, { ok: true })
     }
+    // ── Pedidos atascados (pago nunca confirmado) ──
+    if (p === '/api/wc/pedidos-pendientes' && method === 'GET') return json(res, 200, listarPedidosPendientes())
+    const pedidoAccion = p.match(/^\/api\/wc\/pedidos-pendientes\/([^/]+)\/(procesar|descartar)$/)
+    if (pedidoAccion && method === 'POST') {
+      if (!esAdmin) throw httpErr(403, 'Solo un administrador puede gestionar los pedidos atascados')
+      const orderId = decodeURIComponent(pedidoAccion[1])
+      if (pedidoAccion[2] === 'descartar') return json(res, 200, descartarPedido(orderId))
+      // Procesar: lo pide un administrador que ha comprobado en la tienda que el pedido
+      // está pagado de verdad — el payload guardado sigue diciendo "pendiente", así que
+      // aquí se fuerza el alta a conciencia.
+      const row = db.prepare(`SELECT * FROM _wc_pedidos_pendientes WHERE wc_order_id = ?`).get(orderId)
+      if (!row) throw httpErr(404, 'Pedido no encontrado')
+      if (row.estado !== 'pendiente') throw httpErr(409, `El pedido ya está ${row.estado}`)
+      let order; try { order = JSON.parse(row.payload) } catch { throw httpErr(422, 'El pedido guardado no se puede leer') }
+      const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
+      const resultado = await procesarOrdenWC(order, { base, origen: row.origen, forzar: true })
+      if (resultado.ignored) throw httpErr(422, `No se pudo dar de alta: ${resultado.ignored}`)
+      return json(res, 200, { ok: true, ...resultado })
+    }
+
     if (p === '/api/programs' && method === 'GET') return json(res, 200, domain.listPrograms())
     if (p === '/api/clients' && method === 'GET') return json(res, 200, domain.listClients())
     if (p === '/api/clients' && method === 'POST') { if (!esAdmin) throw httpErr(403, 'Solo un administrador puede crear clientes'); return json(res, 201, domain.createClient(await readBody(req))) }

@@ -58,4 +58,6 @@ db.close()
 process.env.DB_FILE = DB
 process.env.PORT = '3001'
 process.env.DATA_FILE = path.join(os.tmpdir(), 'im-e2e-none.json')
+// Permite que los tests simulen webhooks de WooCommerce (firmados con este secreto)
+process.env.TN_WC_WEBHOOK_SECRET = 'e2e-wh-secret'
 await import(path.join(here, '..', '..', 'api', 'server.js'))
