@@ -367,14 +367,14 @@ test('box: un entrenador puede autogestionar entrenadores (mismos permisos) y ca
   void otroClienteLogin
 })
 
-// ── Webhook de WooCommerce: pedidos (alta/renovación de TN BOX) ──────────────
-function ordenTnBox(overrides = {}) {
+// ── Webhook de WooCommerce: pedidos (alta/renovación) — el producto se identifica por ID ──
+function ordenTnBox(wcProductId, overrides = {}) {
   return {
     id: overrides.id ?? Math.floor(Math.random() * 1e6),
     status: 'completed',
     created_via: 'checkout',
     billing: { email: 'nadie@x.com', first_name: 'Nadie', last_name: '', phone: '' },
-    line_items: [{ name: 'TN BOX' }],
+    line_items: [{ product_id: wcProductId }],
     ...overrides,
   }
 }
@@ -408,9 +408,9 @@ test('enviar prueba del mensaje de bienvenida: falta el email de destino → 400
 
 test('webhook WC (order): cliente nuevo compra TN BOX → se crea sin contraseña y con la suscripción asignada', async () => {
   const token = await adminToken()
-  await api('POST', '/products', { token, body: { nombre: 'TN BOX', tipo: 'recurrente', programas: [] } })
+  await api('POST', '/products', { token, body: { nombre: 'TN BOX', tipo: 'recurrente', programas: [], wcProductId: 70001 } })
   const email = 'altanueva@test.com'
-  const r = await postWebhook(ordenTnBox({ billing: { email, first_name: 'Alta', last_name: 'Nueva', phone: '600' } }), { topic: 'order.created' })
+  const r = await postWebhook(ordenTnBox(70001, { billing: { email, first_name: 'Alta', last_name: 'Nueva', phone: '600' } }), { topic: 'order.created' })
   assert.equal(r.status, 200)
   assert.equal(r.data.clienteNuevo, true)
   assert.equal(r.data.altaComercial, true)
@@ -429,7 +429,7 @@ test('webhook WC (order): cliente nuevo compra TN BOX → se crea sin contraseñ
 test('webhook WC (order): pedido sin pagar (status != completed) no crea nada y se guarda para reintentar', async () => {
   const token = await adminToken()
   const email = 'pendiente@test.com'
-  const r = await postWebhook(ordenTnBox({ id: 424242, status: 'pending', billing: { email, first_name: 'Pend', last_name: '', phone: '' } }), { topic: 'order.created' })
+  const r = await postWebhook(ordenTnBox(70001, { id: 424242, status: 'pending', billing: { email, first_name: 'Pend', last_name: '', phone: '' } }), { topic: 'order.created' })
   assert.equal(r.status, 200)
   assert.equal(r.data.ignored, 'pago_no_confirmado')
 
@@ -446,7 +446,7 @@ test('webhook WC (order): pedido sin pagar (status != completed) no crea nada y 
 test('webhook WC (order): cliente existente compra TN BOX por primera vez → asigna suscripción sin tocar su contraseña', async () => {
   const token = await adminToken()
   const cli = await api('POST', '/clients', { token, body: { nombre: 'Ya Existo', email: 'yaexisto@test.com', username: 'yaexisto', password: 'YaExisto1!' } })
-  const r = await postWebhook(ordenTnBox({ billing: { email: 'yaexisto@test.com', first_name: 'Ya', last_name: 'Existo', phone: '' } }), { topic: 'order.created' })
+  const r = await postWebhook(ordenTnBox(70001, { billing: { email: 'yaexisto@test.com', first_name: 'Ya', last_name: 'Existo', phone: '' } }), { topic: 'order.created' })
   assert.equal(r.status, 200)
   assert.equal(r.data.clienteNuevo, false)
   assert.equal(r.data.altaComercial, true)
@@ -461,7 +461,7 @@ test('webhook WC (order): renovación (created_via=subscription) de un cliente q
   const token = await adminToken()
   const email = 'renueva@test.com'
   await api('POST', '/clients', { token, body: { nombre: 'Renueva', email, username: 'renueva', password: 'Renueva1!' } })
-  const primera = await postWebhook(ordenTnBox({ billing: { email, first_name: 'Renueva', last_name: '', phone: '' } }), { topic: 'order.created' })
+  const primera = await postWebhook(ordenTnBox(70001, { billing: { email, first_name: 'Renueva', last_name: '', phone: '' } }), { topic: 'order.created' })
   assert.equal(primera.data.altaComercial, true) // primera compra: sí es alta comercial
 
   const productos = await api('GET', '/data/im_suscripciones_catalogo', { token })
@@ -472,7 +472,7 @@ test('webhook WC (order): renovación (created_via=subscription) de un cliente q
   const suscAntes = subsAntes.data.find(s => s.clienteId === cli.id && s.catalogoId === tnBoxId)
   assert.ok(suscAntes, 'la primera compra creó la suscripción TN BOX')
 
-  const renovacion = await postWebhook(ordenTnBox({
+  const renovacion = await postWebhook(ordenTnBox(70001, {
     created_via: 'subscription', billing: { email, first_name: 'Renueva', last_name: '', phone: '' },
   }), { topic: 'order.created' })
   assert.equal(renovacion.status, 200)
@@ -483,4 +483,97 @@ test('webhook WC (order): renovación (created_via=subscription) de un cliente q
   const suscDespues = subsDespues.data.filter(s => s.clienteId === cli.id && s.catalogoId === tnBoxId)
   assert.equal(suscDespues.length, 1, 'no debe duplicar la suscripción TN BOX, solo actualizarla')
   assert.equal(suscDespues[0].id, suscAntes.id)
+})
+
+test('webhook WC (order): producto desactivado o desconocido se ignora', async () => {
+  const inactivo = await postWebhook(ordenTnBox(999999), { topic: 'order.created' })
+  assert.equal(inactivo.data.ignored, 'producto_no_en_catalogo')
+})
+
+// ── Webhook de WooCommerce: productos (altas/modificaciones del catálogo) ────
+test('webhook WC (product.created): crea la suscripción en el catálogo, identificada por el ID de WooCommerce', async () => {
+  const token = await adminToken()
+  const r = await postWebhook({ id: 80001, name: 'Plan Nuevo WC', status: 'publish', type: 'simple', price: '39.00' }, { topic: 'product.created' })
+  assert.equal(r.status, 200)
+  assert.ok(r.data.creado)
+
+  const cat = await api('GET', '/data/im_suscripciones_catalogo', { token })
+  const prod = cat.data.find(c => c.wcProductId === 80001)
+  assert.ok(prod, 'se creó el producto en el catálogo')
+  assert.equal(prod.nombre, 'Plan Nuevo WC')
+  assert.equal(prod.tipo, 'unico')
+  assert.equal(prod.precioMensual, 39)
+  assert.equal(prod.activo, true)
+  assert.equal(prod.origen, 'wc')
+})
+
+test('webhook WC (product.updated): actualiza nombre/precio/tipo por ID sin tocar programas ni mensajes ya configurados', async () => {
+  const token = await adminToken()
+  await postWebhook({ id: 80002, name: 'Plan Original', status: 'publish', type: 'subscription', price: '10.00' }, { topic: 'product.created' })
+  // El admin asocia un programa y un mensaje de bienvenida propio, algo que WC no conoce
+  const catAntes = await api('GET', '/data/im_suscripciones_catalogo', { token })
+  const prodAntes = catAntes.data.find(c => c.wcProductId === 80002)
+  const conExtras = catAntes.data.map(c => c.id === prodAntes.id
+    ? { ...c, programas: [{ programaId: 'prog1', fechaInicio: '2030-01-07' }], mensajeBienvenidaEmail: 'Mensaje a medida' }
+    : c)
+  await api('PUT', '/data/im_suscripciones_catalogo', { token, body: conExtras })
+
+  // Renombran y cambian el precio en WooCommerce
+  const r = await postWebhook({ id: 80002, name: 'Plan Renombrado', status: 'publish', type: 'subscription', price: '15.00' }, { topic: 'product.updated' })
+  assert.equal(r.status, 200)
+  assert.ok(r.data.actualizado)
+
+  const catDespues = await api('GET', '/data/im_suscripciones_catalogo', { token })
+  const prodDespues = catDespues.data.find(c => c.wcProductId === 80002)
+  assert.equal(prodDespues.nombre, 'Plan Renombrado')
+  assert.equal(prodDespues.precioMensual, 15)
+  assert.equal(prodDespues.programas.length, 1, 'el programa asociado a mano no se pierde al sincronizar')
+  assert.equal(prodDespues.mensajeBienvenidaEmail, 'Mensaje a medida', 'el mensaje de bienvenida a medida no se pierde al sincronizar')
+})
+
+test('webhook WC (product.updated): al despublicar en WC se desactiva sola, salvo que tenga clientes con suscripción vigente', async () => {
+  const token = await adminToken()
+  await postWebhook({ id: 80003, name: 'Plan A Despublicar', status: 'publish', type: 'simple', price: '5.00' }, { topic: 'product.created' })
+  const r = await postWebhook({ id: 80003, name: 'Plan A Despublicar', status: 'draft', type: 'simple', price: '5.00' }, { topic: 'product.updated' })
+  assert.equal(r.status, 200)
+  const cat = await api('GET', '/data/im_suscripciones_catalogo', { token })
+  assert.equal(cat.data.find(c => c.wcProductId === 80003).activo, false)
+
+  // Otro producto, pero esta vez con un cliente activo asignado: no se desactiva solo
+  await postWebhook({ id: 80004, name: 'Plan Con Clientes', status: 'publish', type: 'simple', price: '5.00' }, { topic: 'product.created' })
+  const catConCliente = await api('GET', '/data/im_suscripciones_catalogo', { token })
+  const prodConCliente = catConCliente.data.find(c => c.wcProductId === 80004)
+  const cli = await api('POST', '/clients', { token, body: { nombre: 'Con Suscripcion', email: 'consuscripcion@test.com', username: 'consuscripcion', password: 'ConSusc1!' } })
+  await api('POST', `/clients/${cli.data.id}/subscriptions`, { token, body: { catalogoId: prodConCliente.id } })
+
+  const rDespublicar = await postWebhook({ id: 80004, name: 'Plan Con Clientes', status: 'draft', type: 'simple', price: '5.00' }, { topic: 'product.updated' })
+  assert.equal(rDespublicar.status, 200)
+  const catFinal = await api('GET', '/data/im_suscripciones_catalogo', { token })
+  assert.equal(catFinal.data.find(c => c.wcProductId === 80004).activo, true, 'no se desactiva solo si tiene una suscripción vigente asignada')
+})
+
+// ── Suscripciones: activo (asignar/desactivar) ───────────────────────────────
+test('suscripciones: no se puede asignar una suscripción desactivada', async () => {
+  const token = await adminToken()
+  const prod = await api('POST', '/products', { token, body: { nombre: 'Plan Inactivo', tipo: 'unico', programas: [] } })
+  await api('PUT', `/products/${prod.data.id}/activo`, { token, body: { activo: false } })
+  const cli = await api('POST', '/clients', { token, body: { nombre: 'Sin Acceso', email: 'sinacceso@test.com', username: 'sinacceso', password: 'SinAcceso1!' } })
+  const asignar = await api('POST', `/clients/${cli.data.id}/subscriptions`, { token, body: { catalogoId: prod.data.id } })
+  assert.equal(asignar.status, 400)
+})
+
+test('suscripciones: no se puede desactivar una que tiene clientes con suscripción vigente asignada', async () => {
+  const token = await adminToken()
+  const prod = await api('POST', '/products', { token, body: { nombre: 'Plan Con Vigentes', tipo: 'unico', programas: [] } })
+  const cli = await api('POST', '/clients', { token, body: { nombre: 'Vigente', email: 'vigente@test.com', username: 'vigente', password: 'Vigente1!' } })
+  await api('POST', `/clients/${cli.data.id}/subscriptions`, { token, body: { catalogoId: prod.data.id } })
+
+  const desactivar = await api('PUT', `/products/${prod.data.id}/activo`, { token, body: { activo: false } })
+  assert.equal(desactivar.status, 409)
+
+  // Sin asignaciones vigentes, sí se puede
+  const prod2 = await api('POST', '/products', { token, body: { nombre: 'Plan Sin Vigentes', tipo: 'unico', programas: [] } })
+  const desactivar2 = await api('PUT', `/products/${prod2.data.id}/activo`, { token, body: { activo: false } })
+  assert.equal(desactivar2.status, 200)
+  assert.equal(desactivar2.data.activo, false)
 })

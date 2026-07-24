@@ -132,6 +132,13 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {isEdit && item?.origen === 'wc' && (
+            <div className="bg-tn-yellow/5 border border-tn-yellow/20 rounded-xl p-3">
+              <p className="text-tn-yellow/80 text-xs">
+                Este producto se sincroniza desde WooCommerce: el nombre, tipo y precio se sobrescribirán solos en la próxima actualización allí.
+              </p>
+            </div>
+          )}
           {/* Nombre */}
           <div>
             <label className="label">Nombre *</label>

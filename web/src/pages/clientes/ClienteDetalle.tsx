@@ -77,7 +77,7 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   const contactos = clienteActual.contactos ?? []
 
   const catalogoDisponible = catalogo.filter(
-    cat => !missSuscsActivas.some(s => s.catalogoId === cat.id),
+    cat => cat.activo !== false && !missSuscsActivas.some(s => s.catalogoId === cat.id),
   )
 
   // ── Pagos (derivados de las suscripciones) ──────────────────────────────────
@@ -121,7 +121,7 @@ export default function ClienteDetalle({ cliente, onVolver }: Props) {
   })
   const yaActivos = new Set(missSuscsActivas.map(s => s.catalogoId))
   const candidatos = catalogo
-    .filter(c => !yaActivos.has(c.id) && c.nombre !== 'Test' && (c.precioMensual ?? 0) > 0)
+    .filter(c => c.activo !== false && !yaActivos.has(c.id) && c.nombre !== 'Test' && (c.precioMensual ?? 0) > 0)
     .sort((a, b) =>
       (popularidad[b.id] ?? 0) - (popularidad[a.id] ?? 0) ||
       (b.precioMensual ?? 0) - (a.precioMensual ?? 0))

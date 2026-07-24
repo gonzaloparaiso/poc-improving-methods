@@ -52,9 +52,6 @@ const KEYS_CON_PASSWORD = new Set(['im_users', 'im_clientes'])
 // Pseudo-programa reservado "Basic" (da acceso a Contenido, no genera calendario).
 // Debe coincidir literalmente con BASIC_PROGRAM_ID en web/src/types/index.ts.
 const BASIC_PROGRAM_ID = '__basic__'
-// Nombre exacto del producto/suscripción "TN BOX" — debe coincidir tal cual con
-// el nombre del producto en WooCommerce y con el nombre de la suscripción en el catálogo.
-const TN_BOX_NOMBRE = 'TN BOX'
 // Textos de bienvenida por defecto — se usan si una suscripción no tiene los suyos propios editados.
 const MENSAJE_BIENVENIDA_EMAIL_DEFAULT = 'Hola{nombre}, ¡bienvenido/a a Training Norte! Ya tienes acceso a tu aplicación.'
 const MENSAJE_BIENVENIDA_WHATSAPP_DEFAULT = '¡Hola{nombre}! Bienvenido/a a Training Norte 💪 Ya tienes acceso a tu app.'
@@ -342,6 +339,11 @@ async function sendMail({ to, subject, html }) {
 // ── Helpers de dominio ────────────────────────────────────────────────────────
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 9) }
 function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+// "Asignación activa" = asignada a un cliente Y con fecha de validez vigente (no basta con activa:true).
+function tieneAsignacionActiva(catalogoId) {
+  const hoy = todayISO()
+  return getCollection('im_suscripciones_clientes').some(s => s.catalogoId === catalogoId && s.activa === true && s.fechaFin >= hoy)
+}
 function siguienteLunes() { const h = new Date(); h.setHours(0, 0, 0, 0); const dow = h.getDay(); const d = new Date(h); d.setDate(h.getDate() + (dow === 1 ? 0 : (1 - dow + 7) % 7)); return d.toISOString().split('T')[0] }
 function addDays(iso, n) { const d = new Date(iso); d.setDate(d.getDate() + n); return d.toISOString().split('T')[0] }
 function instanciarPrograma(programa, fechaInicio) {
@@ -406,9 +408,21 @@ const domain = {
       mensajeBienvenidaEmail: String(b.mensajeBienvenidaEmail ?? '').trim(),
       mensajeBienvenidaWhatsapp: String(b.mensajeBienvenidaWhatsapp ?? '').trim(),
       imagenBienvenidaWhatsapp: String(b.imagenBienvenidaWhatsapp ?? '').trim(),
+      activo: true, origen: 'manual',
     }
     setCollection('im_suscripciones_catalogo', [...cat, nuevo])
     return nuevo
+  },
+  setProductoActivo: (id, activo) => {
+    const cat = getCollection('im_suscripciones_catalogo')
+    const idx = cat.findIndex(c => c.id === id)
+    if (idx < 0) throw httpErr(404, 'Suscripción no encontrada')
+    if (!activo && tieneAsignacionActiva(id)) {
+      throw httpErr(409, 'No se puede desactivar: hay clientes con esta suscripción vigente asignada')
+    }
+    cat[idx] = { ...cat[idx], activo }
+    setCollection('im_suscripciones_catalogo', cat)
+    return cat[idx]
   },
   listClients: () => sinPasswords(getCollection('im_clientes')),
   createClient: (b) => {
@@ -434,6 +448,7 @@ const domain = {
     if (!cliente) throw httpErr(404, 'Cliente no encontrado')
     const producto = getCollection('im_suscripciones_catalogo').find(c => c.id === b.catalogoId)
     if (!producto) throw httpErr(404, 'Producto (suscripción) no encontrado')
+    if (producto.activo === false) throw httpErr(400, 'Esta suscripción está desactivada y no se puede asignar')
     const inicio = new Date(); const f = new Date(inicio); f.setMonth(f.getMonth() + 1); f.setDate(f.getDate() + 3)
     const finISO = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`
     const susc = { id: genId(), catalogoId: producto.id, clienteId: cliente.id, fechaInicio: inicio.toISOString(), fechaFin: finISO, activa: true }
@@ -444,6 +459,46 @@ const domain = {
     return { suscripcion: susc, calendarios: nuevosCal.map(c => ({ id: c.id, programa: c.programaNombre, fechaInicio: c.fechaInicio, semanas: c.semanas.length })) }
   },
   listPrograms: () => getCollection('im_programas').map(p => ({ id: p.id, nombre: p.nombre, semanas: p.semanas.length })),
+}
+
+// ── Sincronización entrante desde WooCommerce (webhooks de producto) ─────────
+// TN es la fuente de verdad para estos campos: nombre, tipo, precio y si está
+// publicado (activo). El resto (programas, mensajes de bienvenida...) son solo
+// del portal y no se tocan. Se identifica el producto SIEMPRE por su ID de
+// WooCommerce (wcProductId), nunca por el nombre.
+function syncProductoDesdeWC(payload) {
+  const wcId = Number(payload && payload.id)
+  if (!wcId) return { ignored: 'sin_id' }
+  const nombre = String((payload && payload.name) || '').trim()
+  if (!nombre) return { ignored: 'sin_nombre' }
+  const publicado = String((payload && payload.status) || '') === 'publish'
+  const tipo = /subscription/i.test(String((payload && payload.type) || '')) ? 'recurrente' : 'unico'
+  const precioMensual = parseFloat(payload && payload.price) || 0
+
+  const cat = getCollection('im_suscripciones_catalogo')
+  const idx = cat.findIndex(c => c.wcProductId === wcId)
+
+  if (idx < 0) {
+    const nuevo = {
+      id: genId(), nombre, tipo, programas: [], precioMensual, primerMesPrueba: false,
+      wcProductId: wcId, creadoEn: new Date().toISOString(), activo: publicado, origen: 'wc',
+      mensajeBienvenidaEmail: '', mensajeBienvenidaWhatsapp: '', imagenBienvenidaWhatsapp: '',
+    }
+    setCollection('im_suscripciones_catalogo', [...cat, nuevo])
+    return { creado: nuevo.id, nombre }
+  }
+
+  const actual = cat[idx]
+  // Solo se desactiva automáticamente al despublicar en WC, y solo si no tiene
+  // clientes con una suscripción vigente asignada (si los tiene, se ignora el
+  // despublicado — hay que desactivarlo a mano tras revisar). Volver a publicar
+  // en WC NO reactiva solo: la reactivación siempre es manual, desde el panel.
+  let activo = actual.activo !== false
+  if (!publicado && !tieneAsignacionActiva(actual.id)) activo = false
+
+  cat[idx] = { ...actual, nombre, tipo, precioMensual, activo, origen: 'wc', wcProductId: wcId }
+  setCollection('im_suscripciones_catalogo', cat)
+  return { actualizado: actual.id, nombre }
 }
 
 // ── Sincronización entrante desde WooCommerce (webhook de suscripción) ────────
@@ -511,10 +566,12 @@ function guardarPedidoPendiente(order, motivo) {
   `).run(id, motivo, JSON.stringify(order), ahora, ahora)
 }
 
-// ── Procesa un pedido de WooCommerce (alta nueva o renovación de TN BOX) ──────
-// Distingue alta nueva de renovación por order.created_via: 'checkout' = compra
-// nueva (checkout manual), 'subscription' = renovación automática de WC Subscriptions.
-// Solo se procesa si order.status === 'completed'; si no, se guarda para reintentar.
+// ── Procesa un pedido de WooCommerce (alta nueva o renovación de una suscripción) ──
+// El producto se identifica por su ID de WooCommerce (wcProductId en el catálogo),
+// nunca por el nombre. Distingue alta nueva de renovación por order.created_via:
+// 'checkout' = compra nueva (checkout manual), 'subscription' = renovación automática
+// de WC Subscriptions. Solo se procesa si order.status === 'completed'; si no, se
+// guarda para reintentar. Los pedidos de un producto desactivado se ignoran.
 async function procesarOrdenWC(order, { base }) {
   const status = String(order.status || '')
   if (status !== 'completed') {
@@ -522,11 +579,11 @@ async function procesarOrdenWC(order, { base }) {
     return { ignored: 'pago_no_confirmado', status }
   }
 
-  const tieneTnBox = (order.line_items || []).some(li => String(li.name || '').trim().toUpperCase() === TN_BOX_NOMBRE)
-  if (!tieneTnBox) return { ignored: 'sin_tn_box' }
-
-  const producto = getCollection('im_suscripciones_catalogo').find(c => c.nombre === TN_BOX_NOMBRE)
-  if (!producto) return { ignored: 'producto_tn_box_no_existe_en_catalogo' }
+  // El producto se identifica SIEMPRE por su ID de WooCommerce (nunca por el nombre).
+  const productIds = (order.line_items || []).map(li => li.product_id).filter(Boolean)
+  const producto = getCollection('im_suscripciones_catalogo').find(c => c.wcProductId != null && productIds.includes(c.wcProductId))
+  if (!producto) return { ignored: 'producto_no_en_catalogo' }
+  if (producto.activo === false) return { ignored: 'producto_inactivo' }
 
   const billing = order.billing || {}
   const email = String(billing.email || '').trim().toLowerCase()
@@ -561,10 +618,10 @@ async function procesarOrdenWC(order, { base }) {
     setCollection('im_clientes', clientes)
   }
 
-  // Asignar o renovar la suscripción TN BOX
+  // Asignar o renovar la suscripción
   let subs = getCollection('im_suscripciones_clientes')
   let susc = subs.find(s => s.clienteId === cliente.id && s.catalogoId === producto.id)
-  const esPrimeraBoxDeEsteCliente = !susc
+  const esPrimeraDeEsteCliente = !susc
   const f = new Date(); f.setMonth(f.getMonth() + 1); f.setDate(f.getDate() + 3)
   const finISO = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`
   if (susc) {
@@ -585,9 +642,9 @@ async function procesarOrdenWC(order, { base }) {
     }
   }
 
-  // Comunicaciones: bienvenida (cliente nuevo o primera vez que compra TN BOX) +
+  // Comunicaciones: bienvenida (cliente nuevo o primera vez que compra este producto) +
   // establecer contraseña (solo si el cliente es nuevo, aún no tiene cuenta creada antes).
-  const esAltaComercial = clienteNuevo || (creadoViaCheckout && esPrimeraBoxDeEsteCliente)
+  const esAltaComercial = clienteNuevo || (creadoViaCheckout && esPrimeraDeEsteCliente)
   if (esAltaComercial) {
     const mensajeEmail = interpolarMensaje(producto.mensajeBienvenidaEmail || MENSAJE_BIENVENIDA_EMAIL_DEFAULT, cliente.nombre)
     const mensajeWhatsapp = interpolarMensaje(producto.mensajeBienvenidaWhatsapp || MENSAJE_BIENVENIDA_WHATSAPP_DEFAULT, cliente.nombre)
@@ -688,6 +745,10 @@ const server = http.createServer(async (req, res) => {
       let payload; try { payload = JSON.parse(raw) } catch { return json(res, 200, { ok: true, ignored: 'sin_payload' }) }
       if (topic.startsWith('subscription')) {
         try { return json(res, 200, { ok: true, ...syncDesdeWC(payload) }) }
+        catch (e) { console.error('[wc-webhook]', e.message); return json(res, 200, { ok: false, error: 'proc' }) }
+      }
+      if (topic.startsWith('product')) {
+        try { return json(res, 200, { ok: true, ...syncProductoDesdeWC(payload) }) }
         catch (e) { console.error('[wc-webhook]', e.message); return json(res, 200, { ok: false, error: 'proc' }) }
       }
       if (topic.startsWith('order')) {
@@ -910,6 +971,17 @@ const server = http.createServer(async (req, res) => {
       if (method === 'PUT') {
         let value = await readBody(req)
         if (KEYS_CON_PASSWORD.has(key)) value = preservarPasswords(key, value)
+        if (key === 'im_suscripciones_catalogo' && Array.isArray(value)) {
+          const actuales = getCollection(key)
+          for (const nuevo of value) {
+            const previo = actuales.find(c => c.id === nuevo.id)
+            const eraActivo = !previo || previo.activo !== false
+            const seraActivo = nuevo.activo !== false
+            if (eraActivo && !seraActivo && tieneAsignacionActiva(nuevo.id)) {
+              throw httpErr(409, `No se puede desactivar "${nuevo.nombre}": hay clientes con esta suscripción vigente asignada`)
+            }
+          }
+        }
         setCollection(key, value)
         return json(res, 200, { ok: true })
       }
@@ -920,6 +992,12 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/users' && method === 'POST') { if (!esAdmin) throw httpErr(403, 'Solo un administrador puede crear usuarios'); return json(res, 201, domain.createUser(await readBody(req))) }
     if (p === '/api/products' && method === 'GET') return json(res, 200, domain.listProducts())
     if (p === '/api/products' && method === 'POST') { if (!esAdmin) throw httpErr(403, 'Solo un administrador puede crear productos'); return json(res, 201, domain.createProduct(await readBody(req))) }
+    const prodActivo = p.match(/^\/api\/products\/([^/]+)\/activo$/)
+    if (prodActivo && method === 'PUT') {
+      if (!esAdmin) throw httpErr(403, 'Solo un administrador puede activar/desactivar suscripciones')
+      const b = await readBody(req)
+      return json(res, 200, domain.setProductoActivo(decodeURIComponent(prodActivo[1]), b.activo === true))
+    }
     // Envío de prueba del mensaje de bienvenida (email) que se está editando, sin guardarlo aún.
     if (p === '/api/staff/test-bienvenida-email' && method === 'POST') {
       const b = await readBody(req)

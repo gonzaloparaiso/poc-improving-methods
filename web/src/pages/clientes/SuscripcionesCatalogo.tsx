@@ -7,6 +7,7 @@ import SuscripcionCatalogoModal from '../../components/clientes/SuscripcionCatal
 import BienvenidaModal from '../../components/clientes/BienvenidaModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { usePermisos } from '../../hooks/usePermisos'
+import { apiSetProductoActivo, refreshFromServer } from '../../lib/storage'
 
 function TipoBadge({ tipo }: { tipo: 'unico' | 'recurrente' }) {
   return tipo === 'recurrente'
@@ -23,6 +24,20 @@ export default function SuscripcionesCatalogo() {
   const [editando, setEditando]   = useState<CatalogoSuscripcion | null>(null)
   const [borrando, setBorrando]   = useState<CatalogoSuscripcion | null>(null)
   const [bienvenida, setBienvenida] = useState<CatalogoSuscripcion | null>(null)
+  const [cambiandoActivo, setCambiandoActivo] = useState<string | null>(null)
+
+  const toggleActivo = useCallback(async (cat: CatalogoSuscripcion) => {
+    const activo = cat.activo !== false
+    setCambiandoActivo(cat.id)
+    try {
+      await apiSetProductoActivo(cat.id, !activo)
+      await refreshFromServer()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'No se pudo cambiar el estado')
+    } finally {
+      setCambiandoActivo(null)
+    }
+  }, [])
 
   /** Tras guardar, crea calendarios para programas recurrentes a clientes activos.
    *  Se incluyen los programas cuya ventana [inicio, inicio + semanas) cubra hoy
@@ -102,7 +117,7 @@ export default function SuscripcionesCatalogo() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-tn-border">
-                  {['Suscripción', 'Programa', 'Precio', 'Tipo', 'Clientes', ''].map(h => (
+                  {['Suscripción', 'Programa', 'Precio', 'Tipo', 'Clientes', 'Estado', ''].map(h => (
                     <th key={h} className={`text-left text-tn-muted text-xs font-semibold uppercase tracking-wider px-5 py-4 ${
                       h === 'Programa' ? 'hidden md:table-cell' : ''
                     }`}>{h}</th>
@@ -117,10 +132,16 @@ export default function SuscripcionesCatalogo() {
                       ? { id: BASIC_PROGRAM_ID, nombre: BASIC_PROGRAM_NOMBRE }
                       : programas.find(p => p.id === pa.programaId),
                   ).filter(Boolean)
+                  const activo = s.activo !== false
                   return (
-                    <tr key={s.id} className="hover:bg-tn-dark/40 transition-colors">
+                    <tr key={s.id} className={`hover:bg-tn-dark/40 transition-colors ${activo ? '' : 'opacity-60'}`}>
                       <td className="px-5 py-4">
-                        <p className="text-white font-semibold text-sm">{s.nombre}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-white font-semibold text-sm">{s.nombre}</p>
+                          {s.origen === 'wc' && (
+                            <span title="Sincronizado desde WooCommerce" className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-tn-yellow/10 text-tn-yellow">TN</span>
+                          )}
+                        </div>
                         <div className="mt-0.5 md:hidden">
                           {progsAsoc.length === 0
                             ? <span className="text-tn-muted/50 text-xs italic">Sin programa</span>
@@ -150,6 +171,20 @@ export default function SuscripcionesCatalogo() {
                       <td className="px-5 py-4"><TipoBadge tipo={s.tipo} /></td>
                       <td className="px-5 py-4">
                         <span className="text-tn-muted text-sm">{clientesConEsta} activo{clientesConEsta !== 1 ? 's' : ''}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        {puede('suscripciones', 'editar') ? (
+                          <button onClick={() => toggleActivo(s)} disabled={cambiandoActivo === s.id}
+                            className={`text-xs font-semibold px-2.5 py-1 rounded-full transition-colors disabled:opacity-50 ${
+                              activo ? 'bg-green-400/10 text-green-400 hover:bg-green-400/20' : 'bg-red-400/10 text-red-400 hover:bg-red-400/20'
+                            }`}>
+                            {cambiandoActivo === s.id ? '...' : activo ? '✓ Activa' : '✗ Inactiva'}
+                          </button>
+                        ) : (
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${activo ? 'bg-green-400/10 text-green-400' : 'bg-red-400/10 text-red-400'}`}>
+                            {activo ? '✓ Activa' : '✗ Inactiva'}
+                          </span>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-1 justify-end">

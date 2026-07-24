@@ -81,6 +81,19 @@ async function apiDelete(path: string) {
 
 export const apiCreateUser    = (b: unknown) => apiPost('/users', b)
 export const apiCreateProduct = (b: unknown) => apiPost('/products', b)
+
+/** Activa/desactiva una suscripción del catálogo (valida en el servidor: no se puede
+ *  desactivar si tiene clientes con esta suscripción vigente asignada). */
+export async function apiSetProductoActivo(id: string, activo: boolean) {
+  const res = await fetch(`${API}/products/${id}/activo`, {
+    method: 'PUT',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ activo }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data as { error?: string }).error || 'No se pudo cambiar el estado')
+  return data
+}
 export const apiCreateClient  = (b: unknown) => apiPost('/clients', b)
 export const apiAssignSubscription = (clienteId: string, b: unknown) => apiPost(`/clients/${clienteId}/subscriptions`, b)
 
