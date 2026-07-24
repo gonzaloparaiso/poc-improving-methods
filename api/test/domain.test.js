@@ -199,11 +199,11 @@ test('crear producto guarda el wcProductId', async () => {
   assert.equal(prod.data.wcProductId, 27984)
 })
 
-// ── Webhook de WooCommerce ───────────────────────────────────────────────────
-async function postWebhook(rawObj, { topic = 'subscription.updated', secret = 'wh-secret', badSig = false } = {}) {
+// ── Webhook de WooCommerce (el origen va en la URL: /wc/webhook/:origen) ─────
+async function postWebhook(rawObj, { topic = 'subscription.updated', secret = 'wh-secret', badSig = false, origen = 'tn' } = {}) {
   const raw = JSON.stringify(rawObj)
   const sig = badSig ? 'firma-mala' : crypto.createHmac('sha256', secret).update(raw, 'utf8').digest('base64')
-  const res = await fetch(BASE + '/wc/webhook', {
+  const res = await fetch(`${BASE}/wc/webhook/${origen}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-wc-webhook-topic': topic, 'x-wc-webhook-signature': sig },
     body: raw,
@@ -504,7 +504,29 @@ test('webhook WC (product.created): crea la suscripción en el catálogo, identi
   assert.equal(prod.tipo, 'unico')
   assert.equal(prod.precioMensual, 39)
   assert.equal(prod.activo, true)
-  assert.equal(prod.origen, 'wc')
+  assert.equal(prod.origen, 'tn')
+})
+
+test('webhook WC: origen desconocido en la URL → 404; origen sin secreto configurado → 503', async () => {
+  const desconocido = await postWebhook({ id: 1 }, { topic: 'product.created', origen: 'otratienda' })
+  assert.equal(desconocido.status, 404)
+
+  // 'im' es un origen válido (extensible a futuro) pero aún no tiene secreto configurado en este entorno
+  const sinConfigurar = await postWebhook({ id: 1 }, { topic: 'product.created', origen: 'im' })
+  assert.equal(sinConfigurar.status, 503)
+})
+
+test('webhook WC: dos orígenes distintos con el MISMO ID de producto no se confunden entre sí', async () => {
+  const token = await adminToken()
+  // Un producto 'tn' con ID 90001
+  await postWebhook({ id: 90001, name: 'Plan TN Noventa', status: 'publish', type: 'simple', price: '20.00' }, { topic: 'product.created', origen: 'tn' })
+  const cat = await api('GET', '/data/im_suscripciones_catalogo', { token })
+  const prodTn = cat.data.find(c => c.wcProductId === 90001 && c.origen === 'tn')
+  assert.ok(prodTn, 'se creó el producto de origen tn')
+
+  // Si un pedido de origen 'tn' llega con ese mismo ID, coincide con ESE producto y ninguno de otro origen
+  const orden = await postWebhook(ordenTnBox(90001, { billing: { email: 'nadie@x.com' } }), { topic: 'order.created', origen: 'tn' })
+  assert.notEqual(orden.data.ignored, 'producto_no_en_catalogo')
 })
 
 test('webhook WC (product.updated): actualiza nombre/precio/tipo por ID sin tocar programas ni mensajes ya configurados', async () => {

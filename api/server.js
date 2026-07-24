@@ -34,8 +34,21 @@ const RENEW = {
   url: process.env.TN_RENEW_URL || '',       // p.ej. https://trainingnorte.com/wp-json/tn-portal/v1/renew
   secret: process.env.TN_RENEW_SECRET || '', // secreto compartido con el snippet de WP
 }
-// Webhook entrante de WooCommerce (sincroniza acceso del portal al pagar)
-const WC_WEBHOOK = { secret: process.env.TN_WC_WEBHOOK_SECRET || '' }
+// Webhooks entrantes de WooCommerce (sincronizan acceso del portal al pagar).
+// Hay más de una tienda WooCommerce de origen (TN, y más adelante IM), cada una con
+// su propio secreto — el origen va en la URL (/api/wc/webhook/:origen), nunca se
+// adivina por el payload, así dos IDs de producto de tiendas distintas no se confunden.
+const ORIGENES_WC = ['tn', 'im']
+const WC_WEBHOOK_SECRETS = {
+  tn: process.env.TN_WC_WEBHOOK_SECRET || '',
+  im: process.env.IM_WC_WEBHOOK_SECRET || '',
+}
+// Un catálogo sin origen (o 'manual') es adoptable por cualquier origen de WC al
+// hacer matching por ID; uno ya marcado con OTRO origen concreto se ignora (evita
+// que un mismo ID numérico de dos tiendas distintas se confunda entre sí).
+function origenCompatible(catOrigen, origenEntrante) {
+  return catOrigen == null || catOrigen === 'manual' || catOrigen === origenEntrante
+}
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'data.db')
 const JSON_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json')
 const MAX_BODY = 30 * 1024 * 1024
@@ -466,7 +479,7 @@ const domain = {
 // publicado (activo). El resto (programas, mensajes de bienvenida...) son solo
 // del portal y no se tocan. Se identifica el producto SIEMPRE por su ID de
 // WooCommerce (wcProductId), nunca por el nombre.
-function syncProductoDesdeWC(payload) {
+function syncProductoDesdeWC(payload, origen) {
   const wcId = Number(payload && payload.id)
   if (!wcId) return { ignored: 'sin_id' }
   const nombre = String((payload && payload.name) || '').trim()
@@ -476,12 +489,14 @@ function syncProductoDesdeWC(payload) {
   const precioMensual = parseFloat(payload && payload.price) || 0
 
   const cat = getCollection('im_suscripciones_catalogo')
-  const idx = cat.findIndex(c => c.wcProductId === wcId)
+  const idx = cat.findIndex(c => c.wcProductId === wcId && origenCompatible(c.origen, origen))
 
   if (idx < 0) {
+    const enOtroOrigen = cat.find(c => c.wcProductId === wcId)
+    if (enOtroOrigen) console.warn(`[wc-webhook:${origen}] ID ${wcId} ya pertenece a origen "${enOtroOrigen.origen}" — se crea una entrada aparte para evitar mezclarlas`)
     const nuevo = {
       id: genId(), nombre, tipo, programas: [], precioMensual, primerMesPrueba: false,
-      wcProductId: wcId, creadoEn: new Date().toISOString(), activo: publicado, origen: 'wc',
+      wcProductId: wcId, creadoEn: new Date().toISOString(), activo: publicado, origen,
       mensajeBienvenidaEmail: '', mensajeBienvenidaWhatsapp: '', imagenBienvenidaWhatsapp: '',
     }
     setCollection('im_suscripciones_catalogo', [...cat, nuevo])
@@ -496,7 +511,7 @@ function syncProductoDesdeWC(payload) {
   let activo = actual.activo !== false
   if (!publicado && !tieneAsignacionActiva(actual.id)) activo = false
 
-  cat[idx] = { ...actual, nombre, tipo, precioMensual, activo, origen: 'wc', wcProductId: wcId }
+  cat[idx] = { ...actual, nombre, tipo, precioMensual, activo, origen, wcProductId: wcId }
   setCollection('im_suscripciones_catalogo', cat)
   return { actualizado: actual.id, nombre }
 }
@@ -504,7 +519,7 @@ function syncProductoDesdeWC(payload) {
 // ── Sincronización entrante desde WooCommerce (webhook de suscripción) ────────
 // Mapea la suscripción de WC al portal: por email (cliente) + wcProductId
 // (producto), actualiza fechaFin/activa y genera calendarios si faltan.
-function syncDesdeWC(sub) {
+function syncDesdeWC(sub, origen) {
   const email = String((sub.billing && sub.billing.email) || '').trim().toLowerCase()
   if (!email) return { ignored: 'sin_email' }
   const cliente = getCollection('im_clientes').find(c => String(c.email || '').toLowerCase() === email)
@@ -524,7 +539,7 @@ function syncDesdeWC(sub) {
   let subsChanged = false, calsChanged = false
 
   for (const pid of productIds) {
-    const cat = catalogo.find(c => c.wcProductId === pid)
+    const cat = catalogo.find(c => c.wcProductId === pid && origenCompatible(c.origen, origen))
     if (!cat) continue
     matched.push(cat.nombre)
     let s = subs.find(x => x.clienteId === cliente.id && x.catalogoId === cat.id)
@@ -572,16 +587,18 @@ function guardarPedidoPendiente(order, motivo) {
 // 'checkout' = compra nueva (checkout manual), 'subscription' = renovación automática
 // de WC Subscriptions. Solo se procesa si order.status === 'completed'; si no, se
 // guarda para reintentar. Los pedidos de un producto desactivado se ignoran.
-async function procesarOrdenWC(order, { base }) {
+async function procesarOrdenWC(order, { base, origen }) {
   const status = String(order.status || '')
   if (status !== 'completed') {
     guardarPedidoPendiente(order, `status_${status || 'desconocido'}`)
     return { ignored: 'pago_no_confirmado', status }
   }
 
-  // El producto se identifica SIEMPRE por su ID de WooCommerce (nunca por el nombre).
+  // El producto se identifica SIEMPRE por la combinación de origen (qué tienda WC lo mandó)
+  // + su ID de WooCommerce — nunca por el nombre. Así dos tiendas con el mismo ID numérico
+  // de producto no se confunden entre sí.
   const productIds = (order.line_items || []).map(li => li.product_id).filter(Boolean)
-  const producto = getCollection('im_suscripciones_catalogo').find(c => c.wcProductId != null && productIds.includes(c.wcProductId))
+  const producto = getCollection('im_suscripciones_catalogo').find(c => c.wcProductId != null && productIds.includes(c.wcProductId) && origenCompatible(c.origen, origen))
   if (!producto) return { ignored: 'producto_no_en_catalogo' }
   if (producto.activo === false) return { ignored: 'producto_inactivo' }
 
@@ -725,36 +742,42 @@ const server = http.createServer(async (req, res) => {
     // ── Públicos ──
     if (p === '/api/health') return json(res, 200, { ok: true, db: 'sqlite', auth: true })
 
-    // ── Webhook de WooCommerce (sincroniza acceso del portal) ──
-    if (p === '/api/wc/webhook' && method === 'POST') {
+    // ── Webhooks de WooCommerce (sincronizan acceso del portal) ──
+    // El origen (qué tienda WC) va en la propia URL, ej. /api/wc/webhook/tn — cada
+    // WooCommerce de origen se configura con su propia URL y su propio secreto.
+    const wcWebhookMatch = p.match(/^\/api\/wc\/webhook\/([a-z]+)$/)
+    if (wcWebhookMatch && method === 'POST') {
+      const origen = wcWebhookMatch[1]
+      if (!ORIGENES_WC.includes(origen)) return json(res, 404, { error: 'origen de webhook desconocido' })
       const raw = await readRawBody(req)
       const topic = String(req.headers['x-wc-webhook-topic'] || '')
       const deliveryId = req.headers['x-wc-webhook-delivery-id'] || req.headers['x-wc-webhook-id'] || ''
-      if (!WC_WEBHOOK.secret) return json(res, 503, { error: 'webhook no configurado' })
+      const secret = WC_WEBHOOK_SECRETS[origen]
+      if (!secret) return json(res, 503, { error: 'webhook no configurado' })
       const sig = req.headers['x-wc-webhook-signature'] || ''
-      const expected = crypto.createHmac('sha256', WC_WEBHOOK.secret).update(raw, 'utf8').digest('base64')
+      const expected = crypto.createHmac('sha256', secret).update(raw, 'utf8').digest('base64')
       const a = Buffer.from(String(sig)); const b2 = Buffer.from(expected)
       if (a.length !== b2.length || !crypto.timingSafeEqual(a, b2)) {
         // Log mínimo (sin payload: la firma no es de fiar) para poder diagnosticar
         // webhooks duplicados/mal configurados en WooCommerce.
-        console.warn(`[wc-webhook] firma inválida — topic=${topic} delivery=${deliveryId} bytes=${raw.length}`)
+        console.warn(`[wc-webhook:${origen}] firma inválida — topic=${topic} delivery=${deliveryId} bytes=${raw.length}`)
         return json(res, 401, { error: 'firma inválida' })
       }
       // Firma verificada: seguro loguear el payload completo para depurar la integración.
-      console.log(`[wc-webhook] recibido — topic=${topic} delivery=${deliveryId}\n${raw}`)
+      console.log(`[wc-webhook:${origen}] recibido — topic=${topic} delivery=${deliveryId}\n${raw}`)
       let payload; try { payload = JSON.parse(raw) } catch { return json(res, 200, { ok: true, ignored: 'sin_payload' }) }
       if (topic.startsWith('subscription')) {
-        try { return json(res, 200, { ok: true, ...syncDesdeWC(payload) }) }
-        catch (e) { console.error('[wc-webhook]', e.message); return json(res, 200, { ok: false, error: 'proc' }) }
+        try { return json(res, 200, { ok: true, ...syncDesdeWC(payload, origen) }) }
+        catch (e) { console.error(`[wc-webhook:${origen}]`, e.message); return json(res, 200, { ok: false, error: 'proc' }) }
       }
       if (topic.startsWith('product')) {
-        try { return json(res, 200, { ok: true, ...syncProductoDesdeWC(payload) }) }
-        catch (e) { console.error('[wc-webhook]', e.message); return json(res, 200, { ok: false, error: 'proc' }) }
+        try { return json(res, 200, { ok: true, ...syncProductoDesdeWC(payload, origen) }) }
+        catch (e) { console.error(`[wc-webhook:${origen}]`, e.message); return json(res, 200, { ok: false, error: 'proc' }) }
       }
       if (topic.startsWith('order')) {
         const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
-        try { return json(res, 200, { ok: true, ...(await procesarOrdenWC(payload, { base })) }) }
-        catch (e) { console.error('[wc-webhook]', e.message); return json(res, 200, { ok: false, error: 'proc' }) }
+        try { return json(res, 200, { ok: true, ...(await procesarOrdenWC(payload, { base, origen })) }) }
+        catch (e) { console.error(`[wc-webhook:${origen}]`, e.message); return json(res, 200, { ok: false, error: 'proc' }) }
       }
       return json(res, 200, { ok: true, ignored: topic || 'sin_topic' })
     }

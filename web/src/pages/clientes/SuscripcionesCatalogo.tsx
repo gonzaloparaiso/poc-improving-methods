@@ -138,8 +138,8 @@ export default function SuscripcionesCatalogo() {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           <p className="text-white font-semibold text-sm">{s.nombre}</p>
-                          {s.origen === 'wc' && (
-                            <span title="Sincronizado desde WooCommerce" className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-tn-yellow/10 text-tn-yellow">TN</span>
+                          {s.origen && s.origen !== 'manual' && (
+                            <span title={`Sincronizado desde WooCommerce (${s.origen.toUpperCase()})`} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-tn-yellow/10 text-tn-yellow">{s.origen.toUpperCase()}</span>
                           )}
                         </div>
                         <div className="mt-0.5 md:hidden">

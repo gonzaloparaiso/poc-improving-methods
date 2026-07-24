@@ -163,9 +163,11 @@ export interface CatalogoSuscripcion {
   primerMesPrueba: boolean        // true = el primer mes no se cobra
   creadoEn: string
   wcProductId?: number | null     // ID del producto en WooCommerce (para renovar y para identificarlo en los webhooks)
-  // Si es 'wc', TN (WooCommerce) es la fuente de verdad de nombre/tipo/precio/activo — se
-  // sincronizan solos vía los webhooks de producto y no conviene editarlos a mano.
-  origen?: 'wc' | 'manual'
+  // 'manual' = creado a mano en el panel. Si es otra cosa ('tn', 'im'...), esa tienda
+  // WooCommerce es la fuente de verdad de nombre/tipo/precio/activo — se sincronizan solos
+  // vía sus webhooks de producto (identificados por origen + wcProductId) y no conviene
+  // editarlos a mano. Nunca se adivina por el nombre.
+  origen?: 'manual' | 'tn' | 'im'
   // Por defecto activa. Se desactiva a mano desde el panel, o sola si se despublica en
   // WooCommerce (salvo que tenga clientes con esta suscripción vigente asignada). Una
   // suscripción inactiva no se puede asignar a nadie.
