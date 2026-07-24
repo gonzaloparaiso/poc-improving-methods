@@ -366,3 +366,94 @@ test('box: un entrenador puede autogestionar entrenadores (mismos permisos) y ca
   assert.ok(meBox.data.cliente.credencialesExtra.some(c => c.id === credId), 'el entrenador del OTRO cliente no debe verse afectado')
   void otroClienteLogin
 })
+
+// ── Webhook de WooCommerce: pedidos (alta/renovación de TN BOX) ──────────────
+function ordenTnBox(overrides = {}) {
+  return {
+    id: overrides.id ?? Math.floor(Math.random() * 1e6),
+    status: 'completed',
+    created_via: 'checkout',
+    billing: { email: 'nadie@x.com', first_name: 'Nadie', last_name: '', phone: '' },
+    line_items: [{ name: 'TN BOX' }],
+    ...overrides,
+  }
+}
+
+test('webhook WC (order): cliente nuevo compra TN BOX → se crea sin contraseña y con la suscripción asignada', async () => {
+  const token = await adminToken()
+  await api('POST', '/products', { token, body: { nombre: 'TN BOX', tipo: 'recurrente', programas: [] } })
+  const email = 'altanueva@test.com'
+  const r = await postWebhook(ordenTnBox({ billing: { email, first_name: 'Alta', last_name: 'Nueva', phone: '600' } }), { topic: 'order.created' })
+  assert.equal(r.status, 200)
+  assert.equal(r.data.clienteNuevo, true)
+  assert.equal(r.data.altaComercial, true)
+
+  const clientes = await api('GET', '/data/im_clientes', { token })
+  const cli = clientes.data.find(c => c.email === email)
+  assert.ok(cli, 'el cliente se creó')
+  assert.equal(cli.password, undefined, 'la API nunca expone la contraseña')
+
+  const subs = await api('GET', '/data/im_suscripciones_clientes', { token })
+  const susc = subs.data.find(s => s.clienteId === cli.id)
+  assert.ok(susc, 'se asignó la suscripción TN BOX')
+  assert.equal(susc.activa, true)
+})
+
+test('webhook WC (order): pedido sin pagar (status != completed) no crea nada y se guarda para reintentar', async () => {
+  const token = await adminToken()
+  const email = 'pendiente@test.com'
+  const r = await postWebhook(ordenTnBox({ id: 424242, status: 'pending', billing: { email, first_name: 'Pend', last_name: '', phone: '' } }), { topic: 'order.created' })
+  assert.equal(r.status, 200)
+  assert.equal(r.data.ignored, 'pago_no_confirmado')
+
+  const clientes = await api('GET', '/data/im_clientes', { token })
+  assert.ok(!clientes.data.some(c => c.email === email), 'no debe crear cliente mientras el pago no esté confirmado')
+
+  const dbCheck = new DatabaseSync(DB)
+  const row = dbCheck.prepare(`SELECT * FROM _wc_pedidos_pendientes WHERE wc_order_id = ?`).get('424242')
+  dbCheck.close()
+  assert.ok(row, 'el pedido pendiente queda guardado para reintentar')
+  assert.equal(row.motivo, 'status_pending')
+})
+
+test('webhook WC (order): cliente existente compra TN BOX por primera vez → asigna suscripción sin tocar su contraseña', async () => {
+  const token = await adminToken()
+  const cli = await api('POST', '/clients', { token, body: { nombre: 'Ya Existo', email: 'yaexisto@test.com', username: 'yaexisto', password: 'YaExisto1!' } })
+  const r = await postWebhook(ordenTnBox({ billing: { email: 'yaexisto@test.com', first_name: 'Ya', last_name: 'Existo', phone: '' } }), { topic: 'order.created' })
+  assert.equal(r.status, 200)
+  assert.equal(r.data.clienteNuevo, false)
+  assert.equal(r.data.altaComercial, true)
+  assert.equal(r.data.cliente, cli.data.id)
+
+  // La contraseña original sigue funcionando (no se ha tocado)
+  const login = await api('POST', '/portal/login', { body: { identificador: 'yaexisto@test.com', password: 'YaExisto1!' } })
+  assert.equal(login.status, 200)
+})
+
+test('webhook WC (order): renovación (created_via=subscription) de un cliente que ya tenía TN BOX solo actualiza la fecha de validez', async () => {
+  const token = await adminToken()
+  const email = 'renueva@test.com'
+  await api('POST', '/clients', { token, body: { nombre: 'Renueva', email, username: 'renueva', password: 'Renueva1!' } })
+  const primera = await postWebhook(ordenTnBox({ billing: { email, first_name: 'Renueva', last_name: '', phone: '' } }), { topic: 'order.created' })
+  assert.equal(primera.data.altaComercial, true) // primera compra: sí es alta comercial
+
+  const productos = await api('GET', '/data/im_suscripciones_catalogo', { token })
+  const tnBoxId = productos.data.find(p => p.nombre === 'TN BOX').id
+  const clientes = await api('GET', '/data/im_clientes', { token })
+  const cli = clientes.data.find(c => c.email === email)
+  const subsAntes = await api('GET', '/data/im_suscripciones_clientes', { token })
+  const suscAntes = subsAntes.data.find(s => s.clienteId === cli.id && s.catalogoId === tnBoxId)
+  assert.ok(suscAntes, 'la primera compra creó la suscripción TN BOX')
+
+  const renovacion = await postWebhook(ordenTnBox({
+    created_via: 'subscription', billing: { email, first_name: 'Renueva', last_name: '', phone: '' },
+  }), { topic: 'order.created' })
+  assert.equal(renovacion.status, 200)
+  assert.equal(renovacion.data.clienteNuevo, false)
+  assert.equal(renovacion.data.altaComercial, false, 'una renovación no es alta comercial: no se reenvía bienvenida')
+
+  const subsDespues = await api('GET', '/data/im_suscripciones_clientes', { token })
+  const suscDespues = subsDespues.data.filter(s => s.clienteId === cli.id && s.catalogoId === tnBoxId)
+  assert.equal(suscDespues.length, 1, 'no debe duplicar la suscripción TN BOX, solo actualizarla')
+  assert.equal(suscDespues[0].id, suscAntes.id)
+})

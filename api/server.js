@@ -52,6 +52,9 @@ const KEYS_CON_PASSWORD = new Set(['im_users', 'im_clientes'])
 // Pseudo-programa reservado "Basic" (da acceso a Contenido, no genera calendario).
 // Debe coincidir literalmente con BASIC_PROGRAM_ID en web/src/types/index.ts.
 const BASIC_PROGRAM_ID = '__basic__'
+// Nombre exacto del producto/suscripción "TN BOX" — debe coincidir tal cual con
+// el nombre del producto en WooCommerce y con el nombre de la suscripción en el catálogo.
+const TN_BOX_NOMBRE = 'TN BOX'
 
 const ROLES = ['administrador', 'head_coach', 'coach']
 const TIPOS = ['recurrente', 'unico']
@@ -65,6 +68,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS "${OBJECT_KEY}" (tarea_id TEXT PRIMARY KEY, 
 db.exec(`CREATE TABLE IF NOT EXISTS _meta (k TEXT PRIMARY KEY, v TEXT)`)
 db.exec(`CREATE TABLE IF NOT EXISTS _sessions (token TEXT PRIMARY KEY, tipo TEXT, sujeto_id TEXT, rol TEXT, expira INTEGER)`)
 db.exec(`CREATE TABLE IF NOT EXISTS _password_resets (token TEXT PRIMARY KEY, cliente_id TEXT, expira INTEGER)`)
+// Pedidos de WooCommerce que no llegaron con status "completed" (pago aún no confirmado
+// por el banco) — se guardan para reintentarlos más adelante en vez de descartarlos.
+db.exec(`CREATE TABLE IF NOT EXISTS _wc_pedidos_pendientes (wc_order_id TEXT PRIMARY KEY, motivo TEXT, payload TEXT NOT NULL, creado_en INTEGER, actualizado_en INTEGER)`)
 // "tipo" distingue resets de cliente (im_clientes) vs staff (im_users); las filas
 // ya existentes en producción se tratan como 'cliente' (comportamiento previo).
 try { db.exec(`ALTER TABLE _password_resets ADD COLUMN tipo TEXT NOT NULL DEFAULT 'cliente'`) } catch { /* ya existe */ }
@@ -279,6 +285,33 @@ function emailResetHtml({ nombre, link, logoUrl }) {
 </div>`
 }
 
+// Plantilla de bienvenida (alta nueva o primera compra de TN BOX).
+// Texto genérico de momento — pendiente de copy definitivo.
+function emailBienvenidaHtml({ nombre, logoUrl }) {
+  return `
+<div style="background:#f4f4f5;padding:32px 16px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:16px;padding:36px 32px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+    <div style="text-align:center;margin-bottom:20px">
+      <img src="${logoUrl}" alt="Training Norte" width="72" height="72" style="border-radius:50%;display:inline-block" />
+    </div>
+    <h2 style="color:#111111;margin:0 0 6px;font-size:20px;text-align:center">¡Bienvenido/a a Training Norte!</h2>
+    <p style="color:#6b7280;margin:0 0 24px;font-size:13px;text-align:center;text-transform:uppercase;letter-spacing:0.05em;font-weight:600">TN BOX</p>
+    <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px">
+      Hola${nombre ? ' ' + nombre : ''}, ya tienes acceso a tu <strong>aplicación de Training Norte</strong>. Estamos encantados de tenerte con nosotros.
+    </p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px" />
+    <p style="color:#6b7280;font-size:13px;line-height:1.5;margin:0 0 8px">
+      ¿Tienes algún problema? Escríbenos a <a href="mailto:soporte@academiatn.com" style="color:#111111;font-weight:600">soporte@academiatn.com</a> y te ayudamos encantados.
+    </p>
+  </div>
+</div>`
+}
+
+// WhatsApp de bienvenida — placeholder hasta integrar Whapi.
+function enviarWhatsappBienvenida(cliente) {
+  console.log(`[whatsapp] TODO integrar Whapi — bienvenida pendiente de enviar a ${cliente.telefono || '(sin teléfono)'} (${cliente.email})`)
+}
+
 async function sendMail({ to, subject, html }) {
   if (!emailConfigured()) throw new Error('Email (Gmail API) no configurado')
   const token = await gmailAccessToken()
@@ -452,6 +485,116 @@ function syncDesdeWC(sub) {
   return { cliente: cliente.id, productos: matched, activa, fechaFin, calendarios: calsChanged }
 }
 
+// Guarda un pedido de WooCommerce que aún no está pagado (status != completed) para
+// poder reintentarlo más adelante en vez de descartarlo (el banco a veces tarda en confirmar).
+function guardarPedidoPendiente(order, motivo) {
+  const id = String(order.id ?? order.order_id ?? '')
+  if (!id) return
+  const ahora = Date.now()
+  db.prepare(`
+    INSERT INTO _wc_pedidos_pendientes (wc_order_id, motivo, payload, creado_en, actualizado_en)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(wc_order_id) DO UPDATE SET motivo = excluded.motivo, payload = excluded.payload, actualizado_en = excluded.actualizado_en
+  `).run(id, motivo, JSON.stringify(order), ahora, ahora)
+}
+
+// ── Procesa un pedido de WooCommerce (alta nueva o renovación de TN BOX) ──────
+// Distingue alta nueva de renovación por order.created_via: 'checkout' = compra
+// nueva (checkout manual), 'subscription' = renovación automática de WC Subscriptions.
+// Solo se procesa si order.status === 'completed'; si no, se guarda para reintentar.
+async function procesarOrdenWC(order, { base }) {
+  const status = String(order.status || '')
+  if (status !== 'completed') {
+    guardarPedidoPendiente(order, `status_${status || 'desconocido'}`)
+    return { ignored: 'pago_no_confirmado', status }
+  }
+
+  const tieneTnBox = (order.line_items || []).some(li => String(li.name || '').trim().toUpperCase() === TN_BOX_NOMBRE)
+  if (!tieneTnBox) return { ignored: 'sin_tn_box' }
+
+  const producto = getCollection('im_suscripciones_catalogo').find(c => c.nombre === TN_BOX_NOMBRE)
+  if (!producto) return { ignored: 'producto_tn_box_no_existe_en_catalogo' }
+
+  const billing = order.billing || {}
+  const email = String(billing.email || '').trim().toLowerCase()
+  if (!email) return { ignored: 'sin_email' }
+
+  const creadoViaCheckout = String(order.created_via || '') === 'checkout'
+
+  let clientes = getCollection('im_clientes')
+  let cliente = clientes.find(c => (c.email || '').toLowerCase() === email)
+  const clienteNuevo = !cliente
+
+  if (clienteNuevo) {
+    cliente = {
+      id: genId(),
+      nombre: String(billing.first_name || '').trim() || 'Cliente',
+      apellido: String(billing.last_name || '').trim(),
+      email: String(billing.email || '').trim(),
+      username: email,
+      password: null, // sin contraseña hasta que la establezca desde el mail
+      activo: true,
+      creadoEn: new Date().toISOString(),
+      bajaEn: null,
+      suscripcionesIds: [],
+      telefono: String(billing.phone || '').trim(),
+      direccion: [billing.address_1, billing.city].filter(Boolean).join(', '),
+      dni: '',
+      contactos: [],
+      esBox: false,
+      credencialesExtra: [],
+    }
+    clientes = [...clientes, cliente]
+    setCollection('im_clientes', clientes)
+  }
+
+  // Asignar o renovar la suscripción TN BOX
+  let subs = getCollection('im_suscripciones_clientes')
+  let susc = subs.find(s => s.clienteId === cliente.id && s.catalogoId === producto.id)
+  const esPrimeraBoxDeEsteCliente = !susc
+  const f = new Date(); f.setMonth(f.getMonth() + 1); f.setDate(f.getDate() + 3)
+  const finISO = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`
+  if (susc) {
+    subs = subs.map(s => s.id === susc.id ? { ...s, activa: true, fechaFin: finISO } : s)
+  } else {
+    susc = { id: genId(), catalogoId: producto.id, clienteId: cliente.id, fechaInicio: new Date().toISOString(), fechaFin: finISO, activa: true }
+    subs = [...subs, susc]
+  }
+  setCollection('im_suscripciones_clientes', subs)
+
+  if ((producto.programas || []).length) {
+    let cals = getCollection('im_calendarios')
+    const yaTiene = cals.some(c => c.clienteId === cliente.id && producto.programas.some(pa => pa.programaId === c.programaId))
+    if (!yaTiene) {
+      const programas = getCollection('im_programas')
+      const nuevos = generarCalendarios(cliente, producto, susc.id, programas, cals)
+      if (nuevos.length) setCollection('im_calendarios', [...cals, ...nuevos])
+    }
+  }
+
+  // Comunicaciones: bienvenida (cliente nuevo o primera vez que compra TN BOX) +
+  // establecer contraseña (solo si el cliente es nuevo, aún no tiene cuenta creada antes).
+  const esAltaComercial = clienteNuevo || (creadoViaCheckout && esPrimeraBoxDeEsteCliente)
+  if (esAltaComercial) {
+    const htmlBienvenida = emailBienvenidaHtml({ nombre: cliente.nombre, logoUrl: `${base}/tn-logo-email.png` })
+    sendMail({ to: cliente.email, subject: '¡Bienvenido/a a Training Norte!', html: htmlBienvenida })
+      .catch(err => console.warn('[email] no se pudo enviar la bienvenida:', err.message))
+    enviarWhatsappBienvenida(cliente)
+
+    if (clienteNuevo) {
+      db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ? AND tipo = 'cliente'`).run(cliente.id)
+      const rtoken = crypto.randomBytes(32).toString('hex')
+      db.prepare(`INSERT INTO _password_resets (token, cliente_id, expira, tipo) VALUES (?,?,?,'cliente')`).run(rtoken, cliente.id, Date.now() + PASSWORD_RESET_TTL)
+      const link = `${base}/reset?token=${rtoken}`
+      const htmlPassword = emailResetHtml({ nombre: cliente.nombre, link, logoUrl: `${base}/tn-logo-email.png` })
+      sendMail({ to: cliente.email, subject: 'Configura tu contraseña · Training Norte', html: htmlPassword })
+        .catch(err => console.warn('[email] no se pudo enviar el email de contraseña:', err.message))
+    }
+  }
+
+  return { cliente: cliente.id, clienteNuevo, altaComercial: esAltaComercial, fechaFin: finISO }
+}
+
 // ── Credenciales extra de un box (entrenadores con el mismo acceso) ───────────
 // Usado tanto por el propio cliente (self-service desde el portal) como por
 // el panel de administradores.
@@ -530,6 +673,11 @@ const server = http.createServer(async (req, res) => {
       let payload; try { payload = JSON.parse(raw) } catch { return json(res, 200, { ok: true, ignored: 'sin_payload' }) }
       if (topic.startsWith('subscription')) {
         try { return json(res, 200, { ok: true, ...syncDesdeWC(payload) }) }
+        catch (e) { console.error('[wc-webhook]', e.message); return json(res, 200, { ok: false, error: 'proc' }) }
+      }
+      if (topic.startsWith('order')) {
+        const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
+        try { return json(res, 200, { ok: true, ...(await procesarOrdenWC(payload, { base })) }) }
         catch (e) { console.error('[wc-webhook]', e.message); return json(res, 200, { ok: false, error: 'proc' }) }
       }
       return json(res, 200, { ok: true, ignored: topic || 'sin_topic' })
