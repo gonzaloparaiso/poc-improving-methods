@@ -4,6 +4,7 @@ import { usePlanificacion } from '../../context/PlanificacionContext'
 import { useCalendarios, addDays } from '../../context/CalendariosContext'
 import { type CatalogoSuscripcion, type ProgramaAsociado, BASIC_PROGRAM_ID, BASIC_PROGRAM_NOMBRE } from '../../types'
 import SuscripcionCatalogoModal from '../../components/clientes/SuscripcionCatalogoModal'
+import BienvenidaModal from '../../components/clientes/BienvenidaModal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { usePermisos } from '../../hooks/usePermisos'
 
@@ -21,6 +22,7 @@ export default function SuscripcionesCatalogo() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editando, setEditando]   = useState<CatalogoSuscripcion | null>(null)
   const [borrando, setBorrando]   = useState<CatalogoSuscripcion | null>(null)
+  const [bienvenida, setBienvenida] = useState<CatalogoSuscripcion | null>(null)
 
   /** Tras guardar, crea calendarios para programas recurrentes a clientes activos.
    *  Se incluyen los programas cuya ventana [inicio, inicio + semanas) cubra hoy
@@ -152,6 +154,14 @@ export default function SuscripcionesCatalogo() {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-1 justify-end">
                           {puede('suscripciones', 'editar') && (
+                            <button onClick={() => setBienvenida(s)} title="Mensaje de bienvenida"
+                              className="p-2 text-tn-muted hover:text-tn-yellow hover:bg-tn-yellow/5 rounded-lg transition-all">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                              </svg>
+                            </button>
+                          )}
+                          {puede('suscripciones', 'editar') && (
                             <button onClick={() => { setEditando(s); setModalOpen(true) }}
                               className="p-2 text-tn-muted hover:text-white hover:bg-tn-border rounded-lg transition-all">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -184,6 +194,9 @@ export default function SuscripcionesCatalogo() {
           onSaved={handleSaved}
           onClose={() => { setModalOpen(false); setEditando(null) }}
         />
+      )}
+      {bienvenida && (
+        <BienvenidaModal item={bienvenida} onClose={() => setBienvenida(null)} />
       )}
       {borrando && (
         <ConfirmDialog

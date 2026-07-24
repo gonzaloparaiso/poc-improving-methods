@@ -397,6 +397,15 @@ test('crear producto: guarda los mensajes de bienvenida (email/WhatsApp) y se pu
   assert.equal(catDespues.data.find(c => c.id === prod.data.id).mensajeBienvenidaEmail, 'Editado')
 })
 
+test('enviar prueba del mensaje de bienvenida: falta el email de destino → 400; no-staff → 401', async () => {
+  const token = await adminToken()
+  const sinTo = await api('POST', '/staff/test-bienvenida-email', { token, body: { mensaje: 'Hola{nombre}' } })
+  assert.equal(sinTo.status, 400)
+
+  const sinToken = await api('POST', '/staff/test-bienvenida-email', { body: { to: 'a@a.com', mensaje: 'Hola' } })
+  assert.equal(sinToken.status, 401)
+})
+
 test('webhook WC (order): cliente nuevo compra TN BOX → se crea sin contraseña y con la suscripción asignada', async () => {
   const token = await adminToken()
   await api('POST', '/products', { token, body: { nombre: 'TN BOX', tipo: 'recurrente', programas: [] } })

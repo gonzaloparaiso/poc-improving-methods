@@ -75,8 +75,8 @@ interface ClientesContextValue {
 
   // Catálogo de suscripciones
   catalogo: CatalogoSuscripcion[]
-  crearCatalogo: (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null; mensajeBienvenidaEmail?: string; mensajeBienvenidaWhatsapp?: string }) => Promise<CatalogoSuscripcion>
-  editarCatalogo: (id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null; mensajeBienvenidaEmail?: string; mensajeBienvenidaWhatsapp?: string }>) => void
+  crearCatalogo: (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null; mensajeBienvenidaEmail?: string; mensajeBienvenidaWhatsapp?: string; imagenBienvenidaWhatsapp?: string }) => Promise<CatalogoSuscripcion>
+  editarCatalogo: (id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null; mensajeBienvenidaEmail?: string; mensajeBienvenidaWhatsapp?: string; imagenBienvenidaWhatsapp?: string }>) => void
   borrarCatalogo: (id: string) => void
 
   // Suscripciones de clientes
@@ -170,13 +170,13 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
 
   // ── Catálogo ──
   // Crear producto pasa por la API REST (validación en el servidor)
-  const crearCatalogo = useCallback(async (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null; mensajeBienvenidaEmail?: string; mensajeBienvenidaWhatsapp?: string }) => {
+  const crearCatalogo = useCallback(async (data: { nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null; mensajeBienvenidaEmail?: string; mensajeBienvenidaWhatsapp?: string; imagenBienvenidaWhatsapp?: string }) => {
     const nueva = await apiCreateProduct(data) as CatalogoSuscripcion
     await refreshFromServer()
     return nueva
   }, [])
 
-  const editarCatalogo = useCallback((id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null; mensajeBienvenidaEmail?: string; mensajeBienvenidaWhatsapp?: string }>) => {
+  const editarCatalogo = useCallback((id: string, data: Partial<{ nombre: string; programas: ProgramaAsociado[]; tipo: TipoSuscripcion; precioMensual: number; primerMesPrueba: boolean; wcProductId?: number | null; mensajeBienvenidaEmail?: string; mensajeBienvenidaWhatsapp?: string; imagenBienvenidaWhatsapp?: string }>) => {
     updCatalogo(catalogo.map(c => c.id === id ? { ...c, ...data } : c))
   }, [catalogo, updCatalogo])
 

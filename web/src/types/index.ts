@@ -165,8 +165,11 @@ export interface CatalogoSuscripcion {
   wcProductId?: number | null     // ID del producto en WooCommerce (para renovar)
   // Mensajes de bienvenida al dar de alta a un cliente con esta suscripción (email/WhatsApp).
   // Admiten "{nombre}" como placeholder. Si están vacíos, se usa un texto genérico por defecto.
+  // El de email es HTML (editor con negrita/cursiva/enlaces/imágenes); el de WhatsApp es texto
+  // plano con marcas *negrita*/_cursiva_/~tachado~ (sintaxis de WhatsApp) y una imagen opcional.
   mensajeBienvenidaEmail?: string
   mensajeBienvenidaWhatsapp?: string
+  imagenBienvenidaWhatsapp?: string
 }
 
 export const MENSAJE_BIENVENIDA_EMAIL_DEFAULT = 'Hola{nombre}, ¡bienvenido/a a Training Norte! Ya tienes acceso a tu aplicación.'

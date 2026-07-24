@@ -1,8 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react'
-import {
-  type CatalogoSuscripcion, type TipoSuscripcion, type ProgramaAsociado, BASIC_PROGRAM_ID, BASIC_PROGRAM_NOMBRE,
-  MENSAJE_BIENVENIDA_EMAIL_DEFAULT, MENSAJE_BIENVENIDA_WHATSAPP_DEFAULT,
-} from '../../types'
+import { type CatalogoSuscripcion, type TipoSuscripcion, type ProgramaAsociado, BASIC_PROGRAM_ID, BASIC_PROGRAM_NOMBRE } from '../../types'
 import { useClientes } from '../../context/ClientesContext'
 import { usePlanificacion } from '../../context/PlanificacionContext'
 import LunesPicker, { getLunes } from '../LunesPicker'
@@ -38,8 +35,6 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
   const [precio, setPrecio]   = useState('')
   const [primerMesPrueba, setPrimerMesPrueba] = useState(false)
   const [wcId, setWcId]       = useState('')
-  const [msgEmail, setMsgEmail]       = useState('')
-  const [msgWhatsapp, setMsgWhatsapp] = useState('')
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
 
@@ -51,13 +46,9 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
       setPrecio(item.precioMensual ? String(item.precioMensual) : '')
       setPrimerMesPrueba(item.primerMesPrueba ?? false)
       setWcId(item.wcProductId != null ? String(item.wcProductId) : '')
-      setMsgEmail(item.mensajeBienvenidaEmail || MENSAJE_BIENVENIDA_EMAIL_DEFAULT)
-      setMsgWhatsapp(item.mensajeBienvenidaWhatsapp || MENSAJE_BIENVENIDA_WHATSAPP_DEFAULT)
     } else {
       setNombre(''); setTipo('recurrente'); setProgs([])
       setPrecio(''); setPrimerMesPrueba(false); setWcId('')
-      setMsgEmail(MENSAJE_BIENVENIDA_EMAIL_DEFAULT)
-      setMsgWhatsapp(MENSAJE_BIENVENIDA_WHATSAPP_DEFAULT)
     }
     setError('')
   }, [item])
@@ -111,10 +102,7 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
     if (precioNum < 0) return setError('El precio no puede ser negativo')
 
     const wcProductId = wcId.trim() ? (parseInt(wcId.trim(), 10) || null) : null
-    const data = {
-      nombre: nombre.trim(), programas: progFinal, tipo, precioMensual: precioNum, primerMesPrueba, wcProductId,
-      mensajeBienvenidaEmail: msgEmail.trim(), mensajeBienvenidaWhatsapp: msgWhatsapp.trim(),
-    }
+    const data = { nombre: nombre.trim(), programas: progFinal, tipo, precioMensual: precioNum, primerMesPrueba, wcProductId }
     setSaving(true)
     try {
       if (isEdit && item) {
@@ -300,26 +288,6 @@ export default function SuscripcionCatalogoModal({ item, onSaved, onClose }: Pro
                 </p>
               </div>
             )}
-          </div>
-
-          {/* Mensajes de bienvenida */}
-          <div className="border-t border-tn-border pt-4">
-            <p className="text-tn-muted text-xs font-semibold uppercase tracking-wider mb-1">Mensajes de bienvenida</p>
-            <p className="text-tn-muted text-xs mb-3">
-              Se envían al dar de alta a un cliente con esta suscripción (o su primera compra). Usa <code className="text-tn-yellow">{'{nombre}'}</code> para incluir el nombre del cliente.
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className="label">Email</label>
-                <textarea className="input-field resize-none" rows={3}
-                  value={msgEmail} onChange={e => setMsgEmail(e.target.value)} />
-              </div>
-              <div>
-                <label className="label">WhatsApp <span className="text-tn-muted text-xs normal-case">(pendiente de conectar Whapi)</span></label>
-                <textarea className="input-field resize-none" rows={3}
-                  value={msgWhatsapp} onChange={e => setMsgWhatsapp(e.target.value)} />
-              </div>
-            </div>
           </div>
 
           {error && (

@@ -104,6 +104,10 @@ export const apiStaffForgotPassword = (email: string) =>
 export const apiStaffResetPassword = (token: string, nueva: string) =>
   apiPost('/staff/reset-password', { token, nueva })
 
+/** Envía el mensaje de bienvenida (email) que se está editando a una dirección de prueba, sin guardarlo. */
+export const apiTestBienvenidaEmail = (to: string, mensaje: string) =>
+  apiPost('/staff/test-bienvenida-email', { to, mensaje })
+
 /** Renueva (mode 'renew') o reactiva creando una nueva suscripción
  *  (mode 'resubscribe') en WooCommerce, cobrando al método guardado.
  *  Devuelve { status: 'paid' } o { status: 'needs_action', payment_url }. */

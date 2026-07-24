@@ -304,7 +304,7 @@ function emailBienvenidaHtml({ mensaje, logoUrl }) {
       <img src="${logoUrl}" alt="Training Norte" width="72" height="72" style="border-radius:50%;display:inline-block" />
     </div>
     <h2 style="color:#111111;margin:0 0 6px;font-size:20px;text-align:center">¡Bienvenido/a a Training Norte!</h2>
-    <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px;white-space:pre-line">${mensaje}</p>
+    <div style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 24px">${mensaje}</div>
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px" />
     <p style="color:#6b7280;font-size:13px;line-height:1.5;margin:0 0 8px">
       ¿Tienes algún problema? Escríbenos a <a href="mailto:soporte@academiatn.com" style="color:#111111;font-weight:600">soporte@academiatn.com</a> y te ayudamos encantados.
@@ -315,8 +315,8 @@ function emailBienvenidaHtml({ mensaje, logoUrl }) {
 
 // WhatsApp de bienvenida — placeholder hasta integrar Whapi. El texto se edita por
 // suscripción en el catálogo (Suscripciones, en el panel de administradores).
-function enviarWhatsappBienvenida(cliente, mensaje) {
-  console.log(`[whatsapp] TODO integrar Whapi — pendiente de enviar a ${cliente.telefono || '(sin teléfono)'} (${cliente.email}): "${mensaje}"`)
+function enviarWhatsappBienvenida(cliente, mensaje, imagenDataUrl) {
+  console.log(`[whatsapp] TODO integrar Whapi — pendiente de enviar a ${cliente.telefono || '(sin teléfono)'} (${cliente.email}): "${mensaje}"${imagenDataUrl ? ' (con imagen adjunta)' : ''}`)
 }
 
 async function sendMail({ to, subject, html }) {
@@ -405,6 +405,7 @@ const domain = {
       primerMesPrueba: b.primerMesPrueba === true, wcProductId, creadoEn: new Date().toISOString(),
       mensajeBienvenidaEmail: String(b.mensajeBienvenidaEmail ?? '').trim(),
       mensajeBienvenidaWhatsapp: String(b.mensajeBienvenidaWhatsapp ?? '').trim(),
+      imagenBienvenidaWhatsapp: String(b.imagenBienvenidaWhatsapp ?? '').trim(),
     }
     setCollection('im_suscripciones_catalogo', [...cat, nuevo])
     return nuevo
@@ -593,7 +594,7 @@ async function procesarOrdenWC(order, { base }) {
     const htmlBienvenida = emailBienvenidaHtml({ mensaje: mensajeEmail, logoUrl: `${base}/tn-logo-email.png` })
     sendMail({ to: cliente.email, subject: '¡Bienvenido/a a Training Norte!', html: htmlBienvenida })
       .catch(err => console.warn('[email] no se pudo enviar la bienvenida:', err.message))
-    enviarWhatsappBienvenida(cliente, mensajeWhatsapp)
+    enviarWhatsappBienvenida(cliente, mensajeWhatsapp, producto.imagenBienvenidaWhatsapp || '')
 
     if (clienteNuevo) {
       db.prepare(`DELETE FROM _password_resets WHERE cliente_id = ? AND tipo = 'cliente'`).run(cliente.id)
@@ -919,6 +920,18 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/users' && method === 'POST') { if (!esAdmin) throw httpErr(403, 'Solo un administrador puede crear usuarios'); return json(res, 201, domain.createUser(await readBody(req))) }
     if (p === '/api/products' && method === 'GET') return json(res, 200, domain.listProducts())
     if (p === '/api/products' && method === 'POST') { if (!esAdmin) throw httpErr(403, 'Solo un administrador puede crear productos'); return json(res, 201, domain.createProduct(await readBody(req))) }
+    // Envío de prueba del mensaje de bienvenida (email) que se está editando, sin guardarlo aún.
+    if (p === '/api/staff/test-bienvenida-email' && method === 'POST') {
+      const b = await readBody(req)
+      const to = String(b.to || '').trim()
+      if (!to) throw httpErr(400, 'Falta el email de destino')
+      const mensaje = interpolarMensaje(String(b.mensaje || ''), 'Prueba')
+      const base = APP_URL || `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}`
+      const html = emailBienvenidaHtml({ mensaje, logoUrl: `${base}/tn-logo-email.png` })
+      try { await sendMail({ to, subject: '[PRUEBA] ¡Bienvenido/a a Training Norte!', html }) }
+      catch (e) { throw httpErr(502, e.message || 'No se pudo enviar el email de prueba') }
+      return json(res, 200, { ok: true })
+    }
     if (p === '/api/programs' && method === 'GET') return json(res, 200, domain.listPrograms())
     if (p === '/api/clients' && method === 'GET') return json(res, 200, domain.listClients())
     if (p === '/api/clients' && method === 'POST') { if (!esAdmin) throw httpErr(403, 'Solo un administrador puede crear clientes'); return json(res, 201, domain.createClient(await readBody(req))) }
